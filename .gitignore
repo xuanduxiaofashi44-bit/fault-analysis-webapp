@@ -1,0 +1,6 @@
+.codex/
+node_modules/
+dist/
+localtunnel.out
+localtunnel.err
+lark-auth-qr.png

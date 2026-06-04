@@ -1,5 +1,13 @@
 import * as XLSX from "xlsx";
 import type { AnalysisConfig, AnalysisResult } from "./types";
+import { getChartInstance } from "./charts";
+
+export type ExportOptions = {
+  pareto: boolean;
+  mttr: boolean;
+  trend: boolean;
+  month: string;
+};
 
 export function exportResult(result: AnalysisResult, config: AnalysisConfig): void {
   const workbook = XLSX.utils.book_new();
@@ -53,6 +61,18 @@ export function exportResult(result: AnalysisResult, config: AnalysisConfig): vo
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(configRows), "规则配置");
 
   XLSX.writeFile(workbook, `设备故障分析_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+export function downloadChartImage(kind: "pareto" | "mttr" | "trend", label: string): void {
+  const chart = getChartInstance(kind);
+  if (!chart) return;
+  const dataUrl = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#fff" });
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = `设备故障分析_${label}_${kind}_${new Date().toISOString().slice(0, 10)}.png`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function percent(value: number): string {

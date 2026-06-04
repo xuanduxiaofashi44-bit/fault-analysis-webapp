@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+﻿import * as XLSX from "xlsx";
 import type { AnalysisConfig, AnalysisResult, FaultRecord, KeywordRule, MonthSummary, TypeSummary } from "./types";
 
 const fieldGetters: Record<string, (record: FaultRecord) => string> = {
@@ -223,3 +223,33 @@ function buildMonthSummary(records: FaultRecord[], months: string[]): MonthSumma
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
+
+export type DailySummary = {
+  day: string;
+  count: number;
+  downtime: number;
+  faultRate: number;
+  mttr: number;
+  mtbf: number;
+};
+
+export function buildDailySummary(records: FaultRecord[], month: string): DailySummary[] {
+  const days = daysInMonth(month);
+  const result: DailySummary[] = [];
+  for (let d = 1; d <= days; d++) {
+    const day = month + "-" + String(d).padStart(2, "0");
+    const dayRecords = records.filter((record) => record.date === day);
+    const downtime = dayRecords.reduce((sum, record) => sum + record.downtime, 0);
+    const count = dayRecords.length;
+    result.push({
+      day,
+      count,
+      downtime: round1(downtime),
+      faultRate: round1((downtime / (24 * 60)) * 100 / 32),
+      mttr: count ? round1(downtime / count) : 0,
+      mtbf: count ? round1(24 * 60 / count / 60) : 0
+    });
+  }
+  return result;
+}
+

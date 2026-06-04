@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color: #17202a;
   background: #ffffff;
   font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
@@ -47,6 +47,25 @@ button {
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+.topbar-right {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.user-badge {
+  align-items: center;
+  background: #eef5ff;
+  border: 1px solid #b8d6f5;
+  border-radius: 20px;
+  color: #1f6fd1;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 4px;
+  padding: 2px 12px 2px 6px;
 }
 
 .topbar h1 {
@@ -624,3 +643,90 @@ tr.highlight {
   text-align: center;
   vertical-align: middle;
 }
+
+/* modal */
+.modal-overlay {
+  align-items: center;
+  background: rgba(23, 32, 42, 0.45);
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 100;
+}
+
+.modal {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 20px 48px rgba(23, 32, 42, 0.24);
+  max-width: 420px;
+  padding: 22px;
+  width: 90%;
+}
+
+.modal h3 {
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+
+.login-modal .user-pick-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.user-pick-btn {
+  background: #eef5ff;
+  border: 1px solid #b8d6f5;
+  border-radius: 6px;
+  color: #1f6fd1;
+  font-size: 13px;
+  padding: 6px 14px;
+}
+
+.user-pick-btn:hover {
+  background: #d8ebff;
+}
+
+.login-new {
+  display: flex;
+  gap: 8px;
+}
+
+.login-new input {
+  flex: 1;
+}
+
+/* export modal */
+.export-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.check-label {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.check-label input[type="checkbox"] {
+  accent-color: #1f6fd1;
+  height: 16px;
+  min-height: 16px;
+  width: 16px;
+}
+
+.export-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+

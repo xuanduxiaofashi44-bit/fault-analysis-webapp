@@ -130,7 +130,7 @@ function updateLoginUI(): void {
 
 function showLoginModal(): void {
   const users = loadUsers();
-  const existing = users.map(u => `<div class="user-pick-row"><button class="user-pick-btn">${escapeHtml(u)}<button class="user-del-btn" data-username="${escapeHtml(u)}" title="删除账号(保留数据)">×</button></button></div>`).join("");
+  const existing = users.map(u => `<div class="user-pick-row"><button class="user-pick-btn">${escapeHtml(u)}</button><button class="user-del-btn" data-username="${escapeHtml(u)}" title="删除账号(保留数据)">×</button></div>`).join("");
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `<div class="modal login-modal"><h3>选择或创建账号</h3>${existing ? `<div class="user-pick-list">${existing}</div>` : ""}<div class="login-new"><input id="newUsername" placeholder="输入新账号名" maxlength="20" /><button id="loginNewBtn" class="primary">进入</button></div>${currentUser ? `<button id="loginCancelBtn" class="secondary" style="margin-top:8px;">返回</button>` : ""}</div>`;

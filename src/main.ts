@@ -159,23 +159,8 @@ function showExportModal(): void {
   if (!result) return;
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  overlay.innerHTML = `<div class="modal export-modal"><h3>导出选项</h3><div class="export-checks"><label class="check-label"><input type="checkbox" id="expPareto" checked /> 停机柏拉图</label><label class="check-label"><input type="checkbox" id="expMttr" checked /> MTTR / MTBF</label><label class="check-label"><input type="checkbox" id="expTrend" checked /> 故障推移</label><label class="check-label"><input type="checkbox" id="expData" checked /> 数据明细</label></div><label style="margin-top:10px;">图表月份<select id="expMonth">${["合计", ...result.months].map(m => `<option value="${m}" ${m === selectedMonth ? "selected" : ""}>${m}</option>`).join("")}</select></label><div class="export-actions"><button id="exportFastBtn" class="secondary">快速导出(PNG图片)</button><button id="exportFullBtn" class="primary">完整导出(原生图表)</button><button id="exportCancelBtn" class="secondary" style="margin-left:8px;">取消</button></div></div>`;
+  overlay.innerHTML = `<div class="modal export-modal"><h3>导出 Excel（原生图表）</h3><p class="export-desc">导出后得到 .xlsx 文件，图表为 Excel 内置图表，修改表格数据即可自动更新图表。</p><div class="export-checks"><label class="check-label"><input type="checkbox" id="expPareto" checked /> 停机柏拉图</label><label class="check-label"><input type="checkbox" id="expMttr" checked /> MTTR / MTBF</label><label class="check-label"><input type="checkbox" id="expTrend" checked /> 故障推移</label><label class="check-label"><input type="checkbox" id="expData" checked /> 数据明细</label></div><label style="margin-top:10px;">图表月份<select id="expMonth">${["合计", ...result.months].map(m => `<option value="${m}" ${m === selectedMonth ? "selected" : ""}>${m}</option>`).join("")}</select></label>${ghToken ? "" : `<div class="export-warn">⚠ 需要 GitHub Token，请先在「基础规则」中配置</div>`}<div class="export-actions"><button id="exportFullBtn" class="primary" style="padding:0 24px;min-height:40px;font-size:15px;">导出 Excel（原生图表）</button><button id="exportCancelBtn" class="secondary" style="margin-left:8px;">取消</button></div><div class="export-alt"><button id="exportFastBtn" class="link-btn">或使用快速导出（PNG 图片，无需 Token）</button></div></div>`;
   document.body.appendChild(overlay);
-  overlay.querySelector("#exportFastBtn")?.addEventListener("click", async () => {
-    const expMonth = (overlay.querySelector<HTMLSelectElement>("#expMonth"))?.value || "合计";
-    const opts: ExportOptions = {
-      pareto: (overlay.querySelector<HTMLInputElement>("#expPareto"))?.checked ?? true,
-      mttr: (overlay.querySelector<HTMLInputElement>("#expMttr"))?.checked ?? true,
-      trend: (overlay.querySelector<HTMLInputElement>("#expTrend"))?.checked ?? true,
-      data: (overlay.querySelector<HTMLInputElement>("#expData"))?.checked ?? true,
-      month: expMonth
-    };
-    document.body.removeChild(overlay);
-    if (!result) return;
-    try { await exportFullReport(result, config, opts); showToast("✓ 导出成功"); }
-    catch (err) { console.error("Export failed:", err); showToast("导出失败，请重试"); }
-  });
-  overlay.querySelector("#exportCancelBtn")?.addEventListener("click", () => document.body.removeChild(overlay));
   overlay.querySelector("#exportFullBtn")?.addEventListener("click", async () => {
     const expMonth = (overlay.querySelector<HTMLSelectElement>("#expMonth"))?.value || "合计";
     const opts: ExportOptions = {
@@ -194,12 +179,27 @@ function showExportModal(): void {
         if (loadingOverlay) loadingOverlay.querySelector(".loading-text")!.textContent = msg;
       });
       hideLoading();
-      showToast("✓ 导出成功");
+      showToast("✓ 导出成功！下载的 Excel 中包含原生图表");
     } catch (err) {
       hideLoading();
       console.error("Export failed:", err);
       showToast("导出失败: " + ((err as Error).message || "请重试"));
     }
+  });
+  overlay.querySelector("#exportCancelBtn")?.addEventListener("click", () => document.body.removeChild(overlay));
+  overlay.querySelector("#exportFastBtn")?.addEventListener("click", async () => {
+    const expMonth = (overlay.querySelector<HTMLSelectElement>("#expMonth"))?.value || "合计";
+    const opts: ExportOptions = {
+      pareto: (overlay.querySelector<HTMLInputElement>("#expPareto"))?.checked ?? true,
+      mttr: (overlay.querySelector<HTMLInputElement>("#expMttr"))?.checked ?? true,
+      trend: (overlay.querySelector<HTMLInputElement>("#expTrend"))?.checked ?? true,
+      data: (overlay.querySelector<HTMLInputElement>("#expData"))?.checked ?? true,
+      month: expMonth
+    };
+    document.body.removeChild(overlay);
+    if (!result) return;
+    try { await exportFullReport(result, config, opts); showToast("✓ 导出成功（PNG 图片格式）"); }
+    catch (err) { console.error("Export failed:", err); showToast("导出失败，请重试"); }
   });
   overlay.addEventListener("click", (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
 }

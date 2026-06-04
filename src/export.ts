@@ -10,6 +10,8 @@ export type ExportOptions = {
   data: boolean;
 };
 
+// ===== 快速导出 (PNG图片) =====
+
 export function exportDataOnly(result: AnalysisResult, _config: AnalysisConfig): void {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(result.records.map((record) => ({
@@ -53,7 +55,6 @@ async function renderChartImage(chartOption: object): Promise<Uint8Array | null>
     const dataUrl = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
     chart.dispose();
     document.body.removeChild(container);
-    // Convert data URL to Uint8Array
     const base64 = dataUrl.split(",")[1];
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -99,12 +100,12 @@ function buildMttrOption(rows: { type: string; mttr: number; mtbf: number }[], t
   };
 }
 
-function buildTrendOption(rows: { month: string; downtime: number; faultRate: number; mttr: number; mtbf: number }[], title: string) {
+function buildTrendOption(rows: { month: string; downtime: number; faultRate: number }[], title: string) {
   const categories = rows.map(r => r.month);
   return {
     title: { text: title, left: "center", textStyle: { fontSize: 14 } },
     tooltip: { trigger: "axis" },
-    legend: { data: ["故障率(%)", "停机总时长(min)", "MTTR(min)", "MTBF(h)"], bottom: 0, textStyle: { fontSize: 10 } },
+    legend: { data: ["故障率(%)", "停机总时长(min)"], bottom: 0, textStyle: { fontSize: 10 } },
     grid: { left: 60, right: 60, top: 50, bottom: 40 },
     xAxis: { type: "category", data: categories, axisLabel: { fontSize: 10 } },
     yAxis: [
@@ -113,9 +114,7 @@ function buildTrendOption(rows: { month: string; downtime: number; faultRate: nu
     ],
     series: [
       { name: "故障率(%)", type: "bar", data: rows.map(r => +r.faultRate.toFixed(2)), itemStyle: { color: "#fac858" }, barMaxWidth: 30, yAxisIndex: 1 },
-      { name: "停机总时长(min)", type: "line", data: rows.map(r => r.downtime), lineStyle: { color: "#5470c6" }, itemStyle: { color: "#5470c6" }, symbol: "circle" },
-      { name: "MTTR(min)", type: "line", data: rows.map(r => +r.mttr.toFixed(1)), lineStyle: { color: "#ee6666" }, itemStyle: { color: "#ee6666" }, symbol: "diamond" },
-      { name: "MTBF(h)", type: "line", data: rows.map(r => +r.mtbf.toFixed(1)), lineStyle: { color: "#91cc75" }, itemStyle: { color: "#91cc75" }, symbol: "triangle" }
+      { name: "停机总时长(min)", type: "line", data: rows.map(r => r.downtime), lineStyle: { color: "#5470c6" }, itemStyle: { color: "#5470c6" }, symbol: "circle" }
     ]
   };
 }
@@ -125,7 +124,6 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
   const wb = new ExcelJS.Workbook();
   wb.creator = "故障分析系统";
 
-  // ===== Sheet 1: 筛选明细 =====
   if (opts.data) {
     const ws1 = wb.addWorksheet("筛选明细");
     ws1.columns = [
@@ -145,7 +143,6 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
     formatHeader(ws1);
   }
 
-  // ===== Sheet 2: 分类汇总 + 图表 =====
   const typeRows = result.typeSummary;
   const ws2 = wb.addWorksheet("分类汇总");
   ws2.columns = [
@@ -160,7 +157,6 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
   typeRows.forEach((r, _i) => ws2.addRow({ type: r.type, count: r.count, downtime: r.downtime, share: percent(r.share), cumulativeShare: r.cumulativeShare, mttr: r.mttr, mtbf: r.mtbf }));
   formatHeader(ws2);
 
-  // Pareto chart image
   if (opts.pareto) {
     const paretoImg = await renderChartImage(buildParetoOption(typeRows, opts.month + " 停机柏拉图"));
     if (paretoImg) {
@@ -168,7 +164,6 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
       ws2.addImage(imgId, { tl: { col: 9, row: 0 }, ext: { width: 480, height: 300 } });
     }
   }
-  // MTTR chart image
   if (opts.mttr) {
     const mttrImg = await renderChartImage(buildMttrOption(typeRows, opts.month + " MTTR/MTBF"));
     if (mttrImg) {
@@ -177,7 +172,6 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
     }
   }
 
-  // ===== Sheet 3: 月度趋势 =====
   const monthRows = result.monthSummary;
   const ws3 = wb.addWorksheet("月度趋势");
   ws3.columns = [
@@ -201,7 +195,6 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
     }
   }
 
-  // ===== Sheet 4: 每日趋势 (仅当选择了具体月份) =====
   if (opts.month !== "合计") {
     const dailyRows = buildDailySummary(result.records, opts.month);
     const ws4 = wb.addWorksheet(opts.month + " 每日趋势");
@@ -216,7 +209,7 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
     dailyRows.forEach(r => ws4.addRow(r));
     formatHeader(ws4);
     const dailyTrendImg = await renderChartImage(buildTrendOption(
-      dailyRows.map(r => ({ month: r.day, downtime: r.downtime, faultRate: r.faultRate, mttr: r.mttr, mtbf: r.mtbf })),
+      dailyRows.map(r => ({ month: r.day, downtime: r.downtime, faultRate: r.faultRate })),
       opts.month + " 每日故障推移"
     ));
     if (dailyTrendImg) {
@@ -242,6 +235,137 @@ function downloadBlob(buf: ArrayBuffer, filename: string): void {
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ===== GitHub Actions 原生图表导出 =====
+
+const GH_API = "https://api.github.com";
+const GH_REPO = "xuanduxiaofashi44-bit/fault-analysis-webapp";
+
+interface ExportPayload {
+  month: string;
+  records: any[];
+  typeSummary: any[];
+  monthSummary: any[];
+  dailySummary: any[];
+}
+
+async function ghFetch(token: string, path: string, options: RequestInit = {}): Promise<Response> {
+  const res = await fetch(`${GH_API}${path}`, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: `token ${token}`,
+      Accept: "application/vnd.github.v3+json",
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`GitHub API ${res.status}: ${text.substring(0, 200)}`);
+  }
+  return res;
+}
+
+export async function exportViaGitHubActions(
+  result: AnalysisResult,
+  opts: ExportOptions,
+  token: string,
+  onStatus: (msg: string) => void
+): Promise<void> {
+  if (!token) throw new Error("请先在设置中填写 GitHub Token");
+
+  // 1. Build payload
+  const payload: ExportPayload = {
+    month: opts.month,
+    records: opts.data ? result.records : [],
+    typeSummary: (opts.pareto || opts.mttr) ? result.typeSummary : [],
+    monthSummary: opts.trend ? result.monthSummary : [],
+    dailySummary: [],
+  };
+  if (opts.month !== "合计") {
+    payload.dailySummary = buildDailySummary(result.records, opts.month);
+  }
+
+  // 2. Push data file to repo
+  const ts = Date.now();
+  const filePath = `data/exports/export_${ts}.json`;
+  const jsonStr = JSON.stringify(payload, null, 2);
+  const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+
+  onStatus("正在上传数据...");
+  await ghFetch(token, `/repos/${GH_REPO}/contents/${filePath}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      message: `export data ${ts}`,
+      content: b64,
+      branch: "main",
+    }),
+  });
+
+  // 3. Trigger workflow
+  onStatus("正在触发导出流程...");
+  const wfResp = await ghFetch(token, `/repos/${GH_REPO}/actions/workflows`);
+  const wfData = await wfResp.json();
+  const exportWf = wfData.workflows.find((w: any) => w.name === "Export Excel with Charts" || w.path?.includes("export-excel"));
+  if (!exportWf) throw new Error("未找到导出 workflow");
+
+  const dispatchResp = await ghFetch(token, `/repos/${GH_REPO}/actions/workflows/${exportWf.id}/dispatches`, {
+    method: "POST",
+    body: JSON.stringify({
+      ref: "main",
+      inputs: { data_file: filePath },
+    }),
+  });
+
+  // 4. Poll for the new workflow run
+  onStatus("正在生成图表(约20-40秒)...");
+  await new Promise(r => setTimeout(r, 3000));
+
+  let runId: number | null = null;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const runsResp = await ghFetch(token, `/repos/${GH_REPO}/actions/workflows/${exportWf.id}/runs?per_page=5`);
+    const runsData = await runsResp.json();
+    const run = runsData.workflow_runs?.find((r: any) =>
+      r.head_branch === "main" &&
+      r.event === "workflow_dispatch" &&
+      new Date(r.created_at).getTime() > ts - 60000
+    );
+    if (run) {
+      runId = run.id;
+      if (run.status === "completed") {
+        if (run.conclusion === "success") break;
+        throw new Error(`导出失败: ${run.conclusion}`);
+      }
+    }
+    onStatus(`正在生成图表(${attempt * 3 + 3}秒)...`);
+    await new Promise(r => setTimeout(r, 3000));
+  }
+
+  if (!runId) throw new Error("无法找到导出的 workflow 运行记录");
+
+  // 5. Get artifact and download
+  onStatus("正在下载文件...");
+  const artResp = await ghFetch(token, `/repos/${GH_REPO}/actions/runs/${runId}/artifacts`);
+  const artData = await artResp.json();
+  const artifact = artData.artifacts?.find((a: any) => a.name === "设备故障分析_图表");
+  if (!artifact) throw new Error("未找到导出产物");
+
+  // Download via redirect
+  const dlResp = await fetch(`${GH_API}/repos/${GH_REPO}/actions/artifacts/${artifact.id}/zip`, {
+    headers: { Authorization: `token ${token}` },
+    redirect: "follow",
+  });
+  if (!dlResp.ok) throw new Error("下载失败");
+
+  const blob = await dlResp.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `设备故障分析_图表_${new Date().toISOString().slice(0, 10)}.zip`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

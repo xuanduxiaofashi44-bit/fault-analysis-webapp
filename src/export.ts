@@ -282,7 +282,7 @@ export async function exportViaGitHubActions(
   const payload: ExportPayload = {
     month: opts.month,
     records: opts.data ? result.records : [],
-    typeSummary: (opts.pareto || opts.mttr) ? result.typeSummary : [],
+    typeSummary: (opts.pareto || opts.mttr) ? (opts.month !== "合计" ? result.typeSummaryByMonth[opts.month] ?? [] : result.typeSummary) : [],
     monthSummary: opts.trend ? result.monthSummary : [],
     dailySummary: [],
   };
@@ -294,7 +294,7 @@ export async function exportViaGitHubActions(
   const ts = Date.now();
   const filePath = `data/exports/export_${ts}.json`;
   const jsonStr = JSON.stringify(payload, null, 2);
-  const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(jsonStr)));
 
   onStatus("正在上传数据...");
   await ghFetch(token, `/repos/${GH_REPO}/contents/${filePath}`, {
@@ -313,7 +313,7 @@ export async function exportViaGitHubActions(
   const exportWf = wfData.workflows.find((w: any) => w.name === "Export Excel with Charts" || w.path?.includes("export-excel"));
   if (!exportWf) throw new Error("未找到导出 workflow");
 
-  const dispatchResp = await ghFetch(token, `/repos/${GH_REPO}/actions/workflows/${exportWf.id}/dispatches`, {
+  await ghFetch(token, `/repos/${GH_REPO}/actions/workflows/${exportWf.id}/dispatches`, {
     method: "POST",
     body: JSON.stringify({
       ref: "main",

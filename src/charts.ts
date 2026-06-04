@@ -23,12 +23,12 @@ export function renderCharts(result: AnalysisResult, selectedMonth: string): voi
   trendChart ??= echarts.init(trendElement);
 
   const typeData = selectedMonth === "合计" ? result.typeSummary : result.typeSummaryByMonth[selectedMonth] ?? [];
-  renderPareto(paretoChart, typeData, selectedMonth);
-  renderMttr(mttrChart, typeData, selectedMonth);
+  renderParetoInline(paretoChart, typeData, selectedMonth);
+  renderMttrInline(mttrChart, typeData, selectedMonth);
   if (selectedMonth === "合计") {
-    renderTrend(trendChart, result);
+    renderTrendInline(trendChart, result);
   } else {
-    renderDailyTrend(trendChart, result, selectedMonth);
+    renderDailyTrendInline(trendChart, result, selectedMonth);
   }
 }
 
@@ -38,7 +38,7 @@ export function resizeCharts(): void {
   trendChart?.resize();
 }
 
-function renderPareto(chart: echarts.ECharts, rows: TypeSummary[], label: string): void {
+export function renderParetoInline(chart: echarts.ECharts, rows: TypeSummary[], label: string): void {
   chart.setOption({
     title: { text: `${label} 停机柏拉图`, left: 8, textStyle: { fontSize: 14 } },
     color: ["#2f80ed", "#f2994a"],
@@ -68,7 +68,7 @@ function renderPareto(chart: echarts.ECharts, rows: TypeSummary[], label: string
   });
 }
 
-function renderDailyTrend(chart: echarts.ECharts, result: AnalysisResult, month: string): void {
+export function renderDailyTrendInline(chart: echarts.ECharts, result: AnalysisResult, month: string): void {
   const daily = buildDailySummary(result.records, month);
   chart.setOption({
     title: { text: `${month} 每日故障推移`, left: 8, textStyle: { fontSize: 14 } },
@@ -88,7 +88,7 @@ function renderDailyTrend(chart: echarts.ECharts, result: AnalysisResult, month:
   });
 }
 
-function renderMttr(chart: echarts.ECharts, rows: TypeSummary[], label: string): void {
+export function renderMttrInline(chart: echarts.ECharts, rows: TypeSummary[], label: string): void {
   chart.setOption({
     title: { text: `${label} MTTR / MTBF`, left: 8, textStyle: { fontSize: 14 } },
     color: ["#27ae60", "#9b51e0"],
@@ -104,7 +104,7 @@ function renderMttr(chart: echarts.ECharts, rows: TypeSummary[], label: string):
   });
 }
 
-function renderTrend(chart: echarts.ECharts, result: AnalysisResult): void {
+export function renderTrendInline(chart: echarts.ECharts, result: AnalysisResult): void {
   chart.setOption({
     title: { text: "月度故障推移", left: 8, textStyle: { fontSize: 14 } },
     color: ["#eb5757", "#2f80ed"],

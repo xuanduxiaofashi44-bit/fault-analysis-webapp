@@ -1,5 +1,6 @@
 import * as echarts from "echarts";
 import type { AnalysisResult, TypeSummary } from "./types";
+import { buildDailySummary, type DailySummary } from "./analysis";
 
 let paretoChart: echarts.ECharts | null = null;
 let mttrChart: echarts.ECharts | null = null;
@@ -24,7 +25,11 @@ export function renderCharts(result: AnalysisResult, selectedMonth: string): voi
   const typeData = selectedMonth === "合计" ? result.typeSummary : result.typeSummaryByMonth[selectedMonth] ?? [];
   renderPareto(paretoChart, typeData, selectedMonth);
   renderMttr(mttrChart, typeData, selectedMonth);
-  renderTrend(trendChart, result);
+  if (selectedMonth === "合计") {
+    renderTrend(trendChart, result);
+  } else {
+    renderDailyTrend(trendChart, result, selectedMonth);
+  }
 }
 
 export function resizeCharts(): void {
@@ -59,6 +64,28 @@ function renderPareto(chart: echarts.ECharts, rows: TypeSummary[], label: string
         data: rows.map((row) => Number(row.cumulativeShare.toFixed(3))),
         label: { show: true, formatter: (item: { value: number }) => `${Math.round(item.value * 100)}%`, fontSize: 10 }
       }
+    ]
+  });
+}
+
+function renderDailyTrend(chart: echarts.ECharts, result: AnalysisResult, month: string): void {
+  const daily = buildDailySummary(result.records, month);
+  chart.setOption({
+    title: { text: `${month} 每日故障推移`, left: 8, textStyle: { fontSize: 14 } },
+    color: ["#eb5757", "#2f80ed", "#27ae60", "#9b51e0"],
+    tooltip: { trigger: "axis" },
+    legend: { top: 24 },
+    grid: { top: 72, left: 54, right: 48, bottom: 42 },
+    xAxis: { type: "category", data: daily.map((row) => row.day.slice(8)), name: "日" },
+    yAxis: [
+      { type: "value", name: "数值" },
+      { type: "value", name: "故障率(%)" }
+    ],
+    series: [
+      { name: "故障率(%)", type: "bar", yAxisIndex: 1, data: daily.map((row) => row.faultRate), label: { show: true, position: "top", fontSize: 10 } },
+      { name: "停机总时长(min)", type: "line", data: daily.map((row) => row.downtime) },
+      { name: "MTTR(min)", type: "line", data: daily.map((row) => row.mttr) },
+      { name: "MTBF(h)", type: "line", data: daily.map((row) => row.mtbf) }
     ]
   });
 }

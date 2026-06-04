@@ -10,7 +10,7 @@ export type ExportOptions = {
   data: boolean;
 };
 
-export function exportDataOnly(result: AnalysisResult, config: AnalysisConfig): void {
+export function exportDataOnly(result: AnalysisResult, _config: AnalysisConfig): void {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(result.records.map((record) => ({
     工作表: record.sheet, 日期: record.date, 线体: record.line,
@@ -32,9 +32,92 @@ export function exportDataOnly(result: AnalysisResult, config: AnalysisConfig): 
   XLSX.writeFile(workbook, `设备故障分析_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-
 function percent(value: number): string {
   return `${Math.round(value * 1000) / 10}%`;
+}
+
+// ===== ECharts-based chart image generation =====
+async function renderChartImage(chartOption: object): Promise<Uint8Array | null> {
+  try {
+    const echarts = await import("echarts");
+    const container = document.createElement("div");
+    container.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:800px;height:400px;";
+    document.body.appendChild(container);
+    const chart = echarts.init(container);
+    chart.setOption({ ...chartOption, animation: false });
+    await new Promise<void>((resolve) => {
+      let done = false;
+      chart.on("finished", () => { if (!done) { done = true; resolve(); } });
+      setTimeout(() => { if (!done) { done = true; resolve(); } }, 2000);
+    });
+    const dataUrl = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+    chart.dispose();
+    document.body.removeChild(container);
+    // Convert data URL to Uint8Array
+    const base64 = dataUrl.split(",")[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+function buildParetoOption(rows: { type: string; downtime: number; cumulativeShare: number }[], title: string) {
+  const categories = rows.map(r => r.type);
+  return {
+    title: { text: title, left: "center", textStyle: { fontSize: 14 } },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["停机时长(min)", "累计占比"], bottom: 0, textStyle: { fontSize: 12 } },
+    grid: { left: 60, right: 60, top: 50, bottom: 40 },
+    xAxis: { type: "category", data: categories, axisLabel: { rotate: 30, fontSize: 10 } },
+    yAxis: [
+      { type: "value", name: "分钟", nameTextStyle: { fontSize: 11 } },
+      { type: "value", name: "%", min: 0, max: 100, nameTextStyle: { fontSize: 11 } }
+    ],
+    series: [
+      { name: "停机时长(min)", type: "bar", data: rows.map(r => r.downtime), itemStyle: { color: "#5470c6" }, barMaxWidth: 40 },
+      { name: "累计占比", type: "line", yAxisIndex: 1, data: rows.map(r => +(r.cumulativeShare * 100).toFixed(1)), lineStyle: { color: "#e74c3c" }, itemStyle: { color: "#e74c3c" }, symbol: "circle" }
+    ]
+  };
+}
+
+function buildMttrOption(rows: { type: string; mttr: number; mtbf: number }[], title: string) {
+  const categories = rows.map(r => r.type);
+  return {
+    title: { text: title, left: "center", textStyle: { fontSize: 14 } },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["MTTR(min)", "MTBF(h)"], bottom: 0, textStyle: { fontSize: 12 } },
+    grid: { left: 60, right: 60, top: 50, bottom: 40 },
+    xAxis: { type: "category", data: categories, axisLabel: { rotate: 30, fontSize: 10 } },
+    yAxis: { type: "value", name: "时间", nameTextStyle: { fontSize: 11 } },
+    series: [
+      { name: "MTTR(min)", type: "line", data: rows.map(r => +r.mttr.toFixed(1)), lineStyle: { color: "#5470c6" }, itemStyle: { color: "#5470c6" }, symbol: "circle" },
+      { name: "MTBF(h)", type: "line", data: rows.map(r => +r.mtbf.toFixed(1)), lineStyle: { color: "#91cc75" }, itemStyle: { color: "#91cc75" }, symbol: "diamond" }
+    ]
+  };
+}
+
+function buildTrendOption(rows: { month: string; downtime: number; faultRate: number; mttr: number; mtbf: number }[], title: string) {
+  const categories = rows.map(r => r.month);
+  return {
+    title: { text: title, left: "center", textStyle: { fontSize: 14 } },
+    tooltip: { trigger: "axis" },
+    legend: { data: ["故障率(%)", "停机总时长(min)", "MTTR(min)", "MTBF(h)"], bottom: 0, textStyle: { fontSize: 10 } },
+    grid: { left: 60, right: 60, top: 50, bottom: 40 },
+    xAxis: { type: "category", data: categories, axisLabel: { fontSize: 10 } },
+    yAxis: [
+      { type: "value", name: "分钟/小时", nameTextStyle: { fontSize: 11 } },
+      { type: "value", name: "%", nameTextStyle: { fontSize: 11 } }
+    ],
+    series: [
+      { name: "故障率(%)", type: "bar", data: rows.map(r => +r.faultRate.toFixed(2)), itemStyle: { color: "#fac858" }, barMaxWidth: 30, yAxisIndex: 1 },
+      { name: "停机总时长(min)", type: "line", data: rows.map(r => r.downtime), lineStyle: { color: "#5470c6" }, itemStyle: { color: "#5470c6" }, symbol: "circle" },
+      { name: "MTTR(min)", type: "line", data: rows.map(r => +r.mttr.toFixed(1)), lineStyle: { color: "#ee6666" }, itemStyle: { color: "#ee6666" }, symbol: "diamond" },
+      { name: "MTBF(h)", type: "line", data: rows.map(r => +r.mtbf.toFixed(1)), lineStyle: { color: "#91cc75" }, itemStyle: { color: "#91cc75" }, symbol: "triangle" }
+    ]
+  };
 }
 
 export async function exportFullReport(result: AnalysisResult, _config: AnalysisConfig, opts: ExportOptions): Promise<void> {
@@ -62,7 +145,7 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
     formatHeader(ws1);
   }
 
-  // ===== Sheet 2: 分类汇总 + 柏拉图/MTTR数据 =====
+  // ===== Sheet 2: 分类汇总 + 图表 =====
   const typeRows = result.typeSummary;
   const ws2 = wb.addWorksheet("分类汇总");
   ws2.columns = [
@@ -74,20 +157,24 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
     { header: "MTTR(min)", key: "mttr", width: 10 },
     { header: "MTBF(h)", key: "mtbf", width: 10 }
   ];
-  typeRows.forEach((r, i) => ws2.addRow({ type: r.type, count: r.count, downtime: r.downtime, share: percent(r.share), cumulativeShare: r.cumulativeShare, mttr: r.mttr, mtbf: r.mtbf }));
+  typeRows.forEach((r, _i) => ws2.addRow({ type: r.type, count: r.count, downtime: r.downtime, share: percent(r.share), cumulativeShare: r.cumulativeShare, mttr: r.mttr, mtbf: r.mtbf }));
   formatHeader(ws2);
 
-  const typeCount = typeRows.length;
-  const lastRow = typeCount + 1;
-  const catRange = `分类汇总!$A$2:$A$${lastRow}`;
-
-  // Pareto chart
+  // Pareto chart image
   if (opts.pareto) {
-    addParetoChart(ws2, wb, typeCount, lastRow, `"${opts.month}" 停机柏拉图`);
+    const paretoImg = await renderChartImage(buildParetoOption(typeRows, opts.month + " 停机柏拉图"));
+    if (paretoImg) {
+      const imgId = wb.addImage({ buffer: paretoImg as any, extension: "png" });
+      ws2.addImage(imgId, { tl: { col: 9, row: 0 }, ext: { width: 480, height: 300 } });
+    }
   }
-  // MTTR chart
+  // MTTR chart image
   if (opts.mttr) {
-    addMttrChart(ws2, wb, typeCount, lastRow, `"${opts.month}" MTTR/MTBF`);
+    const mttrImg = await renderChartImage(buildMttrOption(typeRows, opts.month + " MTTR/MTBF"));
+    if (mttrImg) {
+      const imgId = wb.addImage({ buffer: mttrImg as any, extension: "png" });
+      ws2.addImage(imgId, { tl: { col: 9, row: 22 }, ext: { width: 480, height: 300 } });
+    }
   }
 
   // ===== Sheet 3: 月度趋势 =====
@@ -106,17 +193,18 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
   monthRows.forEach(r => ws3.addRow(r));
   formatHeader(ws3);
 
-  const monthCount = monthRows.length;
-  const monthLastRow = monthCount + 1;
-
   if (opts.trend) {
-    addTrendChart(ws3, wb, monthCount, monthLastRow, "月度故障推移");
+    const trendImg = await renderChartImage(buildTrendOption(monthRows, "月度故障推移"));
+    if (trendImg) {
+      const imgId = wb.addImage({ buffer: trendImg as any, extension: "png" });
+      ws3.addImage(imgId, { tl: { col: 10, row: 0 }, ext: { width: 500, height: 320 } });
+    }
   }
 
   // ===== Sheet 4: 每日趋势 (仅当选择了具体月份) =====
   if (opts.month !== "合计") {
     const dailyRows = buildDailySummary(result.records, opts.month);
-    const ws4 = wb.addWorksheet(`${opts.month} 每日趋势`);
+    const ws4 = wb.addWorksheet(opts.month + " 每日趋势");
     ws4.columns = [
       { header: "日期", key: "day", width: 12 },
       { header: "故障次数", key: "count", width: 10 },
@@ -127,152 +215,31 @@ export async function exportFullReport(result: AnalysisResult, _config: Analysis
     ];
     dailyRows.forEach(r => ws4.addRow(r));
     formatHeader(ws4);
-    const dailyCount = dailyRows.length;
-    const dailyLastRow = dailyCount + 1;
-    addDailyTrendChart(ws4, wb, dailyCount, dailyLastRow, `${opts.month} 每日故障推移`);
+    const dailyTrendImg = await renderChartImage(buildTrendOption(
+      dailyRows.map(r => ({ month: r.day, downtime: r.downtime, faultRate: r.faultRate, mttr: r.mttr, mtbf: r.mtbf })),
+      opts.month + " 每日故障推移"
+    ));
+    if (dailyTrendImg) {
+      const imgId = wb.addImage({ buffer: dailyTrendImg as any, extension: "png" });
+      ws4.addImage(imgId, { tl: { col: 8, row: 0 }, ext: { width: 500, height: 320 } });
+    }
   }
 
   const buf = await wb.xlsx.writeBuffer();
   downloadBlob(buf, `设备故障分析_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-function addParetoChart(ws: any, wb: any, count: number, lastRow: number, title: string): void {
-  const chart = wb.addChart ? wb.addChart('columnBar', []) : null;
-  if (!chart && wb.createChart) {
-    // fallback: try worksheet-level chart
-  }
-  // Use worksheet.addChart for embedded charts
-  if (typeof ws.addChart !== 'function') return;
-  try {
-    // Bar + Line combo - exceljs uses 'bar' for bar charts
-    const paretoChart = ws.addChart('bar', [], {
-      title: { text: title },
-      legend: { position: 'bottom' }
-    });
-    if (!paretoChart) return;
-    // downtime bar
-    paretoChart.addSeries({
-      name: '停机时长(min)',
-      categories: `分类汇总!$A$2:$A$${lastRow}`,
-      values: `分类汇总!$C$2:$C$${lastRow}`,
-      type: 'bar'
-    });
-    // cumulative share line on secondary axis
-    paretoChart.addSeries({
-      name: '累计占比',
-      categories: `分类汇总!$A$2:$A$${lastRow}`,
-      values: `分类汇总!$E$2:$E$${lastRow}`,
-      type: 'line',
-      secondaryAxis: true
-    });
-  } catch { /* chart creation may fail in some environments */ }
-}
-
-function addMttrChart(ws: any, wb: any, count: number, lastRow: number, title: string): void {
-  if (typeof ws.addChart !== 'function') return;
-  try {
-    const chart = ws.addChart('line', [], {
-      title: { text: title },
-      legend: { position: 'bottom' }
-    });
-    if (!chart) return;
-    chart.addSeries({
-      name: 'MTTR(min)',
-      categories: `分类汇总!$A$2:$A$${lastRow}`,
-      values: `分类汇总!$F$2:$F$${lastRow}`
-    });
-    chart.addSeries({
-      name: 'MTBF(h)',
-      categories: `分类汇总!$A$2:$A$${lastRow}`,
-      values: `分类汇总!$G$2:$G$${lastRow}`
-    });
-  } catch {}
-}
-
-function addTrendChart(ws: any, wb: any, count: number, lastRow: number, title: string): void {
-  if (typeof ws.addChart !== 'function') return;
-  try {
-    const chart = ws.addChart('bar', [], {
-      title: { text: title },
-      legend: { position: 'bottom' }
-    });
-    if (!chart) return;
-    chart.addSeries({
-      name: '故障率(%)',
-      categories: `月度趋势!$A$2:$A$${lastRow}`,
-      values: `月度趋势!$F$2:$F$${lastRow}`,
-      type: 'bar',
-      secondaryAxis: true
-    });
-    chart.addSeries({
-      name: '停机总时长(min)',
-      categories: `月度趋势!$A$2:$A$${lastRow}`,
-      values: `月度趋势!$D$2:$D$${lastRow}`,
-      type: 'line'
-    });
-    chart.addSeries({
-      name: 'MTTR(min)',
-      categories: `月度趋势!$A$2:$A$${lastRow}`,
-      values: `月度趋势!$G$2:$G$${lastRow}`,
-      type: 'line'
-    });
-    chart.addSeries({
-      name: 'MTBF(h)',
-      categories: `月度趋势!$A$2:$A$${lastRow}`,
-      values: `月度趋势!$H$2:$H$${lastRow}`,
-      type: 'line'
-    });
-  } catch {}
-}
-
-function addDailyTrendChart(ws: any, wb: any, count: number, lastRow: number, title: string): void {
-  if (typeof ws.addChart !== 'function') return;
-  const sheetName = ws.name || '每日趋势';
-  try {
-    const chart = ws.addChart('bar', [], {
-      title: { text: title },
-      legend: { position: 'bottom' }
-    });
-    if (!chart) return;
-    chart.addSeries({
-      name: '故障率(%)',
-      categories: `'${sheetName}'!$A$2:$A$${lastRow}`,
-      values: `'${sheetName}'!$D$2:$D$${lastRow}`,
-      type: 'bar',
-      secondaryAxis: true
-    });
-    chart.addSeries({
-      name: '停机总时长(min)',
-      categories: `'${sheetName}'!$A$2:$A$${lastRow}`,
-      values: `'${sheetName}'!$C$2:$C$${lastRow}`,
-      type: 'line'
-    });
-    chart.addSeries({
-      name: 'MTTR(min)',
-      categories: `'${sheetName}'!$A$2:$A$${lastRow}`,
-      values: `'${sheetName}'!$E$2:$E$${lastRow}`,
-      type: 'line'
-    });
-    chart.addSeries({
-      name: 'MTBF(h)',
-      categories: `'${sheetName}'!$A$2:$A$${lastRow}`,
-      values: `'${sheetName}'!$F$2:$F$${lastRow}`,
-      type: 'line'
-    });
-  } catch {}
-}
-
 function formatHeader(ws: any): void {
   if (!ws.getRow) return;
   const row = ws.getRow(1);
   row.font = { bold: true };
-  row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4FA' } };
+  row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF0F4FA" } };
 }
 
 function downloadBlob(buf: ArrayBuffer, filename: string): void {
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);

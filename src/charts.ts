@@ -12,26 +12,30 @@ export function getChartInstance(kind: "pareto" | "mttr" | "trend"): echarts.ECh
   return trendChart;
 }
 
-/** 懒初始化：拿实例，不存在则 new；始终返回非 null */
+function _safeInit(el: HTMLDivElement, existing: echarts.ECharts | null): echarts.ECharts {
+  if (existing && !existing.isDisposed()) return existing;
+  if (existing) existing.dispose();
+  const instance = echarts.init(el);
+  if (el.offsetWidth > 0 && el.offsetHeight > 0) {
+    instance.resize();
+  }
+  return instance;
+}
+
+/** 懒初始化 + 防dispose：始终返回可用的 echarts 实例 */
 export function ensureChart(kind: "pareto" | "mttr" | "trend"): echarts.ECharts {
   if (kind === "pareto") {
-    if (!paretoChart) {
-      const el = document.querySelector<HTMLDivElement>("#paretoChart");
-      if (el) paretoChart = echarts.init(el);
-    }
+    const el = document.querySelector<HTMLDivElement>("#paretoChart");
+    if (el) paretoChart = _safeInit(el, paretoChart);
     return paretoChart!;
   }
   if (kind === "mttr") {
-    if (!mttrChart) {
-      const el = document.querySelector<HTMLDivElement>("#mttrChart");
-      if (el) mttrChart = echarts.init(el);
-    }
+    const el = document.querySelector<HTMLDivElement>("#mttrChart");
+    if (el) mttrChart = _safeInit(el, mttrChart);
     return mttrChart!;
   }
-  if (!trendChart) {
-    const el = document.querySelector<HTMLDivElement>("#trendChart");
-    if (el) trendChart = echarts.init(el);
-  }
+  const el = document.querySelector<HTMLDivElement>("#trendChart");
+  if (el) trendChart = _safeInit(el, trendChart);
   return trendChart!;
 }
 
@@ -41,9 +45,9 @@ export function renderCharts(result: AnalysisResult, selectedMonth: string): voi
   const trendElement = document.querySelector<HTMLDivElement>("#trendChart");
   if (!paretoElement || !mttrElement || !trendElement) return;
 
-  paretoChart ??= echarts.init(paretoElement);
-  mttrChart ??= echarts.init(mttrElement);
-  trendChart ??= echarts.init(trendElement);
+  paretoChart = _safeInit(paretoElement, paretoChart);
+  mttrChart = _safeInit(mttrElement, mttrChart);
+  trendChart = _safeInit(trendElement, trendChart);
 
   const typeData = selectedMonth === "合计" ? result.typeSummary : result.typeSummaryByMonth[selectedMonth] ?? [];
   renderParetoInline(paretoChart, typeData, selectedMonth);

@@ -780,8 +780,10 @@ tr.highlight {
   margin-bottom: 14px;
 }
 
-.user-pick-btn {
+.user-pick-row {
   position: relative;
+}
+.user-pick-btn {
   background: #eef5ff;
   border: 1px solid #b8d6f5;
   border-radius: 6px;

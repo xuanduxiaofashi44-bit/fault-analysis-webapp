@@ -2,12 +2,17 @@ import * as XLSX from "xlsx";
 import { analyzeWorkbook, splitList } from "./analysis";
 import { renderCharts, resizeCharts } from "./charts";
 import { defaultConfig, availableKeywordFields } from "./defaults";
-import { exportResult } from "./export";
+import { exportResult, downloadChartImage, type ExportOptions } from "./export";
 import type { AnalysisConfig, AnalysisResult, ClassificationRule, KeywordRule } from "./types";
 import "./styles.css";
 
 type SortKey = "downtime" | "date" | "machineType";
 
+const STORAGE_PREFIX = "faw-config-";
+const USERS_KEY = "faw-users";
+const CURRENT_USER_KEY = "faw-current-user";
+
+let currentUser = "";
 let config: AnalysisConfig = structuredClone(defaultConfig);
 let workbook: XLSX.WorkBook | null = null;
 let result: AnalysisResult | null = null;
@@ -19,17 +24,197 @@ let typeFilter = "全部";
 let sortKey: SortKey = "downtime";
 let sidebarOpen = true;
 let activePage = "mainPage";
+let exportModalVisible = false;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("App root missing");
 
+function loadUsers(): string[] {
+  try { return JSON.parse(localStorage.getItem(USERS_KEY) || "[]"); } catch { return []; }
+}
+
+function saveUsers(users: string[]): void {
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+function loadConfig(username: string): AnalysisConfig | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_PREFIX + username);
+    if (!raw) return null;
+    return JSON.parse(raw) as AnalysisConfig;
+  } catch { return null; }
+}
+
+function saveConfig(): void {
+  if (!currentUser) return;
+  localStorage.setItem(STORAGE_PREFIX + currentUser, JSON.stringify(config));
+}
+
+function loginUser(username: string): void {
+  currentUser = username;
+  localStorage.setItem(CURRENT_USER_KEY, username);
+  const saved = loadConfig(username);
+  if (saved) {
+    config = saved;
+  } else {
+    config = structuredClone(defaultConfig);
+  }
+  const users = loadUsers();
+  if (!users.includes(username)) {
+    users.push(username);
+    saveUsers(users);
+  }
+  updateLoginUI();
+  syncConfigToUI();
+  renderRuleEditors();
+  if (workbook) runAnalysis();
+}
+
+function logoutUser(): void {
+  currentUser = "";
+  localStorage.removeItem(CURRENT_USER_KEY);
+  updateLoginUI();
+}
+
+function syncConfigToUI(): void {
+  const sheetsInput = document.querySelector<HTMLInputElement>("#sheetsInput");
+  const deptInput = document.querySelector<HTMLInputElement>("#departmentInput");
+  const minDowntimeInput = document.querySelector<HTMLInputElement>("#minDowntimeInput");
+  const maxDowntimeInput = document.querySelector<HTMLInputElement>("#maxDowntimeInput");
+  const highlightInput = document.querySelector<HTMLTextAreaElement>("#highlightInput");
+  if (sheetsInput) sheetsInput.value = config.sheets.join(",");
+  if (deptInput) deptInput.value = config.departmentFilter;
+  if (minDowntimeInput) minDowntimeInput.value = String(config.minDowntime);
+  if (maxDowntimeInput) maxDowntimeInput.value = config.maxDowntime ? String(config.maxDowntime) : "";
+  if (highlightInput) highlightInput.value = config.highlightKeywords.join(",");
+}
+
+function updateLoginUI(): void {
+  const loginArea = document.querySelector<HTMLSpanElement>("#loginArea");
+  if (!loginArea) return;
+  if (currentUser) {
+    loginArea.innerHTML = `
+      <span class="user-badge">${escapeHtml(currentUser)}</span>
+      <button id="logoutBtn" class="secondary" style="min-height:30px;font-size:12px;padding:0 10px;">切换账号</button>
+    `;
+    document.querySelector("#logoutBtn")?.addEventListener("click", () => { logoutUser(); showLoginModal(); });
+  } else {
+    loginArea.innerHTML = `<button id="loginBtn" class="secondary" style="min-height:30px;font-size:12px;padding:0 10px;">登录</button>`;
+    document.querySelector("#loginBtn")?.addEventListener("click", showLoginModal);
+  }
+}
+
+function showLoginModal(): void {
+  const users = loadUsers();
+  const existing = users.map(u => `<button class="user-pick-btn">${escapeHtml(u)}</button>`).join("");
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal login-modal">
+      <h3>选择或创建账号</h3>
+      ${existing ? `<div class="user-pick-list">${existing}</div>` : ""}
+      <div class="login-new">
+        <input id="newUsername" placeholder="输入新账号名" maxlength="20" />
+        <button id="loginNewBtn" class="primary">进入</button>
+      </div>
+      ${currentUser ? `<button id="loginCancelBtn" class="secondary" style="margin-top:8px;">返回</button>` : ""}
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelectorAll(".user-pick-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.body.removeChild(overlay);
+      loginUser(btn.textContent || "");
+    });
+  });
+  overlay.querySelector("#loginNewBtn")?.addEventListener("click", () => {
+    const input = overlay.querySelector<HTMLInputElement>("#newUsername");
+    const name = input?.value.trim();
+    if (!name) return;
+    document.body.removeChild(overlay);
+    loginUser(name);
+  });
+  overlay.querySelector("#loginCancelBtn")?.addEventListener("click", () => {
+    document.body.removeChild(overlay);
+    if (currentUser) updateLoginUI();
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) { document.body.removeChild(overlay); if (currentUser) updateLoginUI(); }
+  });
+}
+
+function showExportModal(): void {
+  if (!result) return;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal export-modal">
+      <h3>导出选项</h3>
+      <div class="export-checks">
+        <label class="check-label"><input type="checkbox" id="expPareto" checked /> 停机柏拉图</label>
+        <label class="check-label"><input type="checkbox" id="expMttr" checked /> MTTR / MTBF</label>
+        <label class="check-label"><input type="checkbox" id="expTrend" checked /> 故障推移</label>
+        <label class="check-label"><input type="checkbox" id="expData" checked /> Excel 数据表</label>
+      </div>
+      <label style="margin-top:10px;">
+        图表月份
+        <select id="expMonth">
+          ${["合计", ...result.months].map(m => `<option value="${m}" ${m === selectedMonth ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+      </label>
+      <div class="export-actions">
+        <button id="exportDoBtn" class="primary">导出</button>
+        <button id="exportCancelBtn" class="secondary">取消</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#exportDoBtn")?.addEventListener("click", () => {
+    const expMonth = (overlay.querySelector<HTMLSelectElement>("#expMonth"))?.value || "合计";
+    const doPareto = (overlay.querySelector<HTMLInputElement>("#expPareto"))?.checked;
+    const doMttr = (overlay.querySelector<HTMLInputElement>("#expMttr"))?.checked;
+    const doTrend = (overlay.querySelector<HTMLInputElement>("#expTrend"))?.checked;
+    const doData = (overlay.querySelector<HTMLInputElement>("#expData"))?.checked;
+    document.body.removeChild(overlay);
+    if (!result) return;
+
+    if (doData) exportResult(result, config);
+
+    if (expMonth !== selectedMonth) {
+      renderCharts(result, expMonth);
+      setTimeout(() => {
+        if (doPareto) downloadChartImage("pareto", expMonth);
+        if (doMttr) downloadChartImage("mttr", expMonth);
+        if (doTrend) downloadChartImage("trend", expMonth);
+        renderCharts(result!, selectedMonth);
+      }, 500);
+    } else {
+      if (doPareto) downloadChartImage("pareto", expMonth);
+      if (doMttr) downloadChartImage("mttr", expMonth);
+      if (doTrend) downloadChartImage("trend", expMonth);
+    }
+  });
+  overlay.querySelector("#exportCancelBtn")?.addEventListener("click", () => {
+    document.body.removeChild(overlay);
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) document.body.removeChild(overlay);
+  });
+}
+
+// ======= init app =======
 app.innerHTML = `
   <header class="topbar">
     <div>
       <h1>设备故障数据分析</h1>
       <p>上传 Excel，配置筛选关键词，生成明细、柏拉图、MTTR/MTBF 和故障推移。</p>
     </div>
-    <button id="exportBtn" class="primary" disabled>导出 Excel</button>
+    <div class="topbar-right">
+      <span id="loginArea"></span>
+      <button id="exportBtn" class="primary" disabled>导出 Excel</button>
+    </div>
   </header>
 
   <main class="layout">
@@ -131,10 +316,13 @@ app.innerHTML = `
           <h2>基础规则</h2>
         </div>
         <div class="form-grid">
-          <label>工作表<input id="sheetsInput" value="${config.sheets.join(",")}" /></label>
-          <label>责任部门包含<input id="departmentInput" value="${config.departmentFilter}" /></label>
-          <label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" value="${config.minDowntime}" /></label>
-          <label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" value="${config.maxDowntime || ""}" placeholder="不限制" /></label>
+          <label>工作表<input id="sheetsInput" /></label>
+          <label>责任部门包含<input id="departmentInput" /></label>
+          <label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" /></label>
+          <label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" placeholder="不限制" /></label>
+        </div>
+        <div style="margin-top:14px;text-align:right;">
+          <button id="saveBasicBtn" class="primary">保存并应用</button>
         </div>
       </section>
 
@@ -144,7 +332,7 @@ app.innerHTML = `
           </div>
           <label>
             <span class="label-row">高亮关键词<span class="field-note">在故障内容中高亮以下关键词</span></span>
-            <textarea id="highlightInput">${config.highlightKeywords.join(",")}</textarea>
+            <textarea id="highlightInput"></textarea>
           </label>
           <div class="mini-title-row">
             <div class="mini-title">包含规则</div>
@@ -156,6 +344,9 @@ app.innerHTML = `
             <button id="addExcludeBtn" class="icon-btn" title="新增排除规则">+</button>
           </div>
           <div id="excludeRules"></div>
+          <div style="margin-top:14px;text-align:right;">
+            <button id="saveKeywordBtn" class="primary">保存并应用</button>
+          </div>
       </section>
 
       <section id="classPanel" class="page-view panel config-workspace">
@@ -171,6 +362,9 @@ app.innerHTML = `
             <span>关键词</span>
           </div>
           <div id="classRules"></div>
+          <div style="margin-top:14px;text-align:right;">
+            <button id="saveClassBtn" class="primary">保存并应用</button>
+          </div>
       </section>
 
     </section>
@@ -182,6 +376,13 @@ renderRuleEditors();
 renderEmptyState();
 updateSidebarState();
 updatePageView();
+updateLoginUI();
+
+// Auto-login from last session
+const lastUser = localStorage.getItem(CURRENT_USER_KEY);
+if (lastUser && loadConfig(lastUser)) {
+  loginUser(lastUser);
+}
 
 function bindEvents(): void {
   document.querySelector("#sidebarToggle")?.addEventListener("click", () => {
@@ -214,11 +415,17 @@ function bindEvents(): void {
     runAnalysis();
   });
 
-  bindInput("#sheetsInput", (value) => { config.sheets = splitList(value); });
-  bindInput("#departmentInput", (value) => { config.departmentFilter = value.trim(); });
-  bindInput("#minDowntimeInput", (value) => { config.minDowntime = Number(value) || 0; });
-  bindInput("#maxDowntimeInput", (value) => { config.maxDowntime = Number(value) || 0; });
-  bindInput("#highlightInput", (value) => { config.highlightKeywords = splitList(value); });
+  // Basic panel - no auto-run, just track changes
+  bindInputNoRun("#sheetsInput", (value) => { config.sheets = splitList(value); });
+  bindInputNoRun("#departmentInput", (value) => { config.departmentFilter = value.trim(); });
+  bindInputNoRun("#minDowntimeInput", (value) => { config.minDowntime = Number(value) || 0; });
+  bindInputNoRun("#maxDowntimeInput", (value) => { config.maxDowntime = Number(value) || 0; });
+  bindInputNoRun("#highlightInput", (value) => { config.highlightKeywords = splitList(value); });
+
+  // Save buttons
+  document.querySelector("#saveBasicBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); });
+  document.querySelector("#saveKeywordBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); });
+  document.querySelector("#saveClassBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); });
 
   document.querySelector("#addIncludeBtn")?.addEventListener("click", () => {
     config.includeKeywords.push({ fields: ["description"], keywords: [], matchMode: "any" });
@@ -233,7 +440,7 @@ function bindEvents(): void {
     renderRuleEditors();
   });
   document.querySelector("#exportBtn")?.addEventListener("click", () => {
-    if (result) exportResult(result, config);
+    if (result) showExportModal();
   });
 
   document.querySelector("#chartMonth")?.addEventListener("change", (event) => {
@@ -248,17 +455,16 @@ function bindEvents(): void {
     });
   });
 
-  bindInput("#tableSearch", (value) => { searchText = value.trim(); renderTable(); }, false);
+  bindInputNoRun("#tableSearch", (value) => { searchText = value.trim(); renderTable(); });
   document.querySelector("#monthFilter")?.addEventListener("change", (event) => { monthFilter = (event.target as HTMLSelectElement).value; renderTable(); });
   document.querySelector("#typeFilter")?.addEventListener("change", (event) => { typeFilter = (event.target as HTMLSelectElement).value; renderTable(); });
   document.querySelector("#sortSelect")?.addEventListener("change", (event) => { sortKey = (event.target as HTMLSelectElement).value as SortKey; renderTable(); });
   window.addEventListener("resize", resizeCharts);
 }
 
-function bindInput(selector: string, handler: (value: string) => void, rerun = true): void {
+function bindInputNoRun(selector: string, handler: (value: string) => void): void {
   document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)?.addEventListener("input", (event) => {
     handler((event.target as HTMLInputElement).value);
-    if (rerun) runAnalysis();
   });
 }
 
@@ -309,13 +515,11 @@ function updateKeywordRule(event: Event): void {
   if (prop === "delete") {
     rules.splice(index, 1);
     renderRuleEditors();
-    runAnalysis();
     return;
   }
   if (prop === "field") rules[index].fields = [(target as HTMLSelectElement).value];
   if (prop === "mode") rules[index].matchMode = (target as HTMLSelectElement).value as "any" | "all";
   if (prop === "keywords") rules[index].keywords = splitList((target as HTMLInputElement).value);
-  runAnalysis();
 }
 
 function renderClassRules(): void {
@@ -342,12 +546,10 @@ function updateClassRule(event: Event): void {
   if (prop === "delete") {
     config.classificationRules.splice(index, 1);
     renderRuleEditors();
-    runAnalysis();
     return;
   }
   if (prop === "type") config.classificationRules[index].type = (target as HTMLInputElement).value.trim();
   if (prop === "keywords") config.classificationRules[index].keywords = splitList((target as HTMLTextAreaElement).value);
-  runAnalysis();
 }
 
 function renderResult(): void {

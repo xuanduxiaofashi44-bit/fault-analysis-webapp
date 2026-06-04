@@ -1,4 +1,4 @@
-﻿import * as XLSX from "xlsx";
+import * as XLSX from "xlsx";
 import type { AnalysisConfig, AnalysisResult, FaultRecord, KeywordRule, MonthSummary, TypeSummary } from "./types";
 
 const fieldGetters: Record<string, (record: FaultRecord) => string> = {

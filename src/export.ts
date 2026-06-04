@@ -1,5 +1,6 @@
 import type { AnalysisConfig, AnalysisResult } from "./types";
 import { buildDailySummary } from "./analysis";
+import * as XLSX from "xlsx";
 
 export type ExportOptions = {
   pareto: boolean;
@@ -10,8 +11,6 @@ export type ExportOptions = {
 };
 
 export function exportDataOnly(result: AnalysisResult, config: AnalysisConfig): void {
-  const XLSX = requireXlsxSync();
-  if (!XLSX) return;
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(result.records.map((record) => ({
     工作表: record.sheet, 日期: record.date, 线体: record.line,
@@ -33,9 +32,6 @@ export function exportDataOnly(result: AnalysisResult, config: AnalysisConfig): 
   XLSX.writeFile(workbook, `设备故障分析_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-function requireXlsxSync() {
-  try { return require("xlsx"); } catch { return null; }
-}
 
 function percent(value: number): string {
   return `${Math.round(value * 1000) / 10}%`;

@@ -68,3 +68,4 @@ export type AnalysisResult = {
   typeSummaryByMonth: Record<string, TypeSummary[]>;
   monthSummary: MonthSummary[];
 };
+

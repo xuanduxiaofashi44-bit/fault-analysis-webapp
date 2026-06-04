@@ -967,3 +967,38 @@ tr.highlight {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+/* export modal v3 */
+.export-desc {
+  color: #647386;
+  font-size: 13px;
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+.export-warn {
+  background: #fff8e6;
+  border: 1px solid #e6c45c;
+  border-radius: 6px;
+  color: #8a6d14;
+  font-size: 13px;
+  margin-top: 10px;
+  padding: 8px 12px;
+}
+
+.export-alt {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #647386;
+  cursor: pointer;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  color: #2f80ed;
+}

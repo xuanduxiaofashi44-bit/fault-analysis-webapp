@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { analyzeWorkbook, splitList } from "./analysis";
+import { analyzeWorkbook, splitList, buildTypeSummary, buildMonthSummary } from "./analysis";
 import { renderCharts, resizeCharts } from "./charts";
 import { defaultConfig, availableKeywordFields } from "./defaults";
 import { exportFullReport, type ExportOptions } from "./export";
@@ -208,7 +208,9 @@ function showEditModal(record?: FaultRecord): void {
       result.records.unshift(newRec);
     }
     document.body.removeChild(overlay);
+    recalcSummaries();
     renderResult();
+
     showToast(isEdit ? "✓ 修改成功" : "✓ 新增成功");
   });
 }
@@ -311,6 +313,7 @@ function deleteSelectedRecords(): void {
   result.records = result.records.filter(r => !selectedIds.has(r.id));
   selectedIds.clear();
   currentPage = 1;
+  recalcSummaries();
   renderResult();
   showToast("✓ 删除成功");
 }
@@ -521,6 +524,16 @@ function downtimeClass(value: number): string {
   if (value > 120) return "dt dt-red";
   if (value > 60) return "dt dt-pink";
   return "dt";
+}
+
+function recalcSummaries(): void {
+  if (!result) return;
+  const months = [...new Set(result.records.map(r => r.date.slice(0, 7)).filter(Boolean))].sort();
+  result.months = months;
+  result.typeSummary = buildTypeSummary(result.records);
+  const recs = result.records;
+  result.typeSummaryByMonth = Object.fromEntries(months.map(m => [m, buildTypeSummary(recs.filter(r => r.date.startsWith(m)), m)]));
+  result.monthSummary = buildMonthSummary(result.records, months);
 }
 
 function escapeHtml(value: string): string {

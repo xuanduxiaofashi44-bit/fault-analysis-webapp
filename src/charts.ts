@@ -5,6 +5,12 @@ let paretoChart: echarts.ECharts | null = null;
 let mttrChart: echarts.ECharts | null = null;
 let trendChart: echarts.ECharts | null = null;
 
+export function getChartInstance(kind: "pareto" | "mttr" | "trend"): echarts.ECharts | null {
+  if (kind === "pareto") return paretoChart;
+  if (kind === "mttr") return mttrChart;
+  return trendChart;
+}
+
 export function renderCharts(result: AnalysisResult, selectedMonth: string): void {
   const paretoElement = document.querySelector<HTMLDivElement>("#paretoChart");
   const mttrElement = document.querySelector<HTMLDivElement>("#mttrChart");

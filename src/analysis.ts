@@ -171,7 +171,7 @@ function dedupeRecords(records: FaultRecord[]): FaultRecord[] {
   return output;
 }
 
-function buildTypeSummary(records: FaultRecord[], month?: string): TypeSummary[] {
+export function buildTypeSummary(records: FaultRecord[], month?: string): TypeSummary[] {
   const totalDowntime = records.reduce((sum, record) => sum + record.downtime, 0);
   const days = month ? daysInMonth(month) : Math.max(1, [...new Set(records.map((record) => record.date))].length || 1);
   const grouped = new Map<string, { count: number; downtime: number }>();
@@ -201,7 +201,7 @@ function buildTypeSummary(records: FaultRecord[], month?: string): TypeSummary[]
     });
 }
 
-function buildMonthSummary(records: FaultRecord[], months: string[]): MonthSummary[] {
+export function buildMonthSummary(records: FaultRecord[], months: string[]): MonthSummary[] {
   return months.map((month) => {
     const monthRecords = records.filter((record) => record.date.startsWith(month));
     const days = daysInMonth(month);
@@ -252,4 +252,3 @@ export function buildDailySummary(records: FaultRecord[], month: string): DailyS
   }
   return result;
 }
-

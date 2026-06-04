@@ -209,7 +209,7 @@ function bindEvents(): void {
       return;
     }
     const buffer = await file.arrayBuffer();
-    workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    workbook = XLSX.read(buffer, { type: "array" });
     document.querySelector("#fileMeta")!.textContent = `${file.name} · ${workbook.SheetNames.length} 个工作表`;
     runAnalysis();
   });

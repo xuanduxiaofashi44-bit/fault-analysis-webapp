@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { analyzeWorkbook, splitList, buildTypeSummary, buildMonthSummary } from "./analysis";
 import { renderCharts, resizeCharts } from "./charts";
 import { defaultConfig, availableKeywordFields } from "./defaults";
-import { exportFullReport, type ExportOptions } from "./export";
+import { exportFullReport, exportViaGitHubActions, type ExportOptions } from "./export";
 import type { AnalysisConfig, AnalysisResult, ClassificationRule, KeywordRule, FaultRecord } from "./types";
 import "./styles.css";
 
@@ -29,6 +29,7 @@ let activePage = "mainPage";
 let selectedIds = new Set<string>();
 let currentPage = 1;
 let pageSize = 20;
+let ghToken = "";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("App root missing");
@@ -60,7 +61,7 @@ function showToast(message: string): void {
     setTimeout(() => {
       toast.classList.remove("toast-show");
       setTimeout(() => toast.remove(), 400);
-    }, 2000);
+    }, 3000);
   });
 }
 
@@ -81,6 +82,7 @@ function loadConfig(username: string): AnalysisConfig | null {
 function saveConfig(): void {
   if (!currentUser) return;
   localStorage.setItem(STORAGE_PREFIX + currentUser, JSON.stringify(config));
+  localStorage.setItem(STORAGE_PREFIX + currentUser + "-token", ghToken);
 }
 
 function loginUser(username: string): void {
@@ -88,6 +90,7 @@ function loginUser(username: string): void {
   localStorage.setItem(CURRENT_USER_KEY, username);
   const saved = loadConfig(username);
   if (saved) config = saved; else config = structuredClone(defaultConfig);
+  ghToken = localStorage.getItem(STORAGE_PREFIX + username + "-token") || "";
   const users = loadUsers();
   if (!users.includes(username)) { users.push(username); saveUsers(users); }
   updateLoginUI();
@@ -114,6 +117,8 @@ function syncConfigToUI(): void {
   if (minDowntimeInput) minDowntimeInput.value = String(config.minDowntime);
   if (maxDowntimeInput) maxDowntimeInput.value = config.maxDowntime ? String(config.maxDowntime) : "";
   if (highlightInput) highlightInput.value = config.highlightKeywords.join(",");
+  const ghTokenInput = document.querySelector<HTMLInputElement>("#ghTokenInput");
+  if (ghTokenInput) ghTokenInput.value = ghToken;
 }
 
 function updateLoginUI(): void {
@@ -154,9 +159,9 @@ function showExportModal(): void {
   if (!result) return;
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  overlay.innerHTML = `<div class="modal export-modal"><h3>导出选项</h3><div class="export-checks"><label class="check-label"><input type="checkbox" id="expPareto" checked /> 停机柏拉图</label><label class="check-label"><input type="checkbox" id="expMttr" checked /> MTTR / MTBF</label><label class="check-label"><input type="checkbox" id="expTrend" checked /> 故障推移</label><label class="check-label"><input type="checkbox" id="expData" checked /> 数据明细</label></div><label style="margin-top:10px;">图表月份<select id="expMonth">${["合计", ...result.months].map(m => `<option value="${m}" ${m === selectedMonth ? "selected" : ""}>${m}</option>`).join("")}</select></label><div class="export-actions"><button id="exportDoBtn" class="primary">导出 Excel</button><button id="exportCancelBtn" class="secondary">取消</button></div></div>`;
+  overlay.innerHTML = `<div class="modal export-modal"><h3>导出选项</h3><div class="export-checks"><label class="check-label"><input type="checkbox" id="expPareto" checked /> 停机柏拉图</label><label class="check-label"><input type="checkbox" id="expMttr" checked /> MTTR / MTBF</label><label class="check-label"><input type="checkbox" id="expTrend" checked /> 故障推移</label><label class="check-label"><input type="checkbox" id="expData" checked /> 数据明细</label></div><label style="margin-top:10px;">图表月份<select id="expMonth">${["合计", ...result.months].map(m => `<option value="${m}" ${m === selectedMonth ? "selected" : ""}>${m}</option>`).join("")}</select></label><div class="export-actions"><button id="exportFastBtn" class="secondary">快速导出(PNG图片)</button><button id="exportFullBtn" class="primary">完整导出(原生图表)</button><button id="exportCancelBtn" class="secondary" style="margin-left:8px;">取消</button></div></div>`;
   document.body.appendChild(overlay);
-  overlay.querySelector("#exportDoBtn")?.addEventListener("click", async () => {
+  overlay.querySelector("#exportFastBtn")?.addEventListener("click", async () => {
     const expMonth = (overlay.querySelector<HTMLSelectElement>("#expMonth"))?.value || "合计";
     const opts: ExportOptions = {
       pareto: (overlay.querySelector<HTMLInputElement>("#expPareto"))?.checked ?? true,
@@ -171,6 +176,31 @@ function showExportModal(): void {
     catch (err) { console.error("Export failed:", err); showToast("导出失败，请重试"); }
   });
   overlay.querySelector("#exportCancelBtn")?.addEventListener("click", () => document.body.removeChild(overlay));
+  overlay.querySelector("#exportFullBtn")?.addEventListener("click", async () => {
+    const expMonth = (overlay.querySelector<HTMLSelectElement>("#expMonth"))?.value || "合计";
+    const opts: ExportOptions = {
+      pareto: (overlay.querySelector<HTMLInputElement>("#expPareto"))?.checked ?? true,
+      mttr: (overlay.querySelector<HTMLInputElement>("#expMttr"))?.checked ?? true,
+      trend: (overlay.querySelector<HTMLInputElement>("#expTrend"))?.checked ?? true,
+      data: (overlay.querySelector<HTMLInputElement>("#expData"))?.checked ?? true,
+      month: expMonth
+    };
+    document.body.removeChild(overlay);
+    if (!result) return;
+    if (!ghToken) { showToast("请先在基础规则中填写 GitHub Token"); return; }
+    showLoading("正在上传数据...");
+    try {
+      await exportViaGitHubActions(result, opts, ghToken, (msg) => {
+        if (loadingOverlay) loadingOverlay.querySelector(".loading-text")!.textContent = msg;
+      });
+      hideLoading();
+      showToast("✓ 导出成功");
+    } catch (err) {
+      hideLoading();
+      console.error("Export failed:", err);
+      showToast("导出失败: " + ((err as Error).message || "请重试"));
+    }
+  });
   overlay.addEventListener("click", (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
 }
 
@@ -218,7 +248,7 @@ function showEditModal(record?: FaultRecord): void {
 // ======= init app =======
 app.innerHTML = `<header class="topbar"><div><h1>设备故障数据分析</h1><p>上传 Excel，配置筛选关键词，生成明细、柏拉图、MTTR/MTBF 和故障推移。</p></div><div class="topbar-right"><span id="loginArea"></span><button id="exportBtn" class="primary" disabled>导出 Excel</button></div></header><main class="layout"><aside class="sidebar"><nav class="side-nav" aria-label="功能导航"><div class="side-brand"><span>设</span><strong>故障分析</strong></div><button id="sidebarToggle" class="sidebar-toggle" aria-expanded="true" aria-label="收起规则">☰</button><button class="side-nav-item active" data-page="mainPage"><span class="nav-icon">主</span><span>首页</span></button><button class="side-nav-item" data-page="basicPanel"><span class="nav-icon">基</span><span>基础规则</span></button><button class="side-nav-item" data-page="keywordPanel"><span class="nav-icon">关</span><span>关键词</span></button><button class="side-nav-item" data-page="classPanel"><span class="nav-icon">分</span><span>分类规则</span></button></nav></aside><button id="sidebarOpenToggle" class="sidebar-open-toggle" aria-label="展开规则">☰</button><section class="workspace"><section id="mainPage" class="page-view active"><section class="panel upload-panel main-upload"><div><h2>文件上传</h2><div id="fileMeta" class="muted">尚未上传文件</div></div><label class="dropzone"><input id="fileInput" type="file" accept=".xlsx,.xls" /><span>选择 Excel 文件</span><small>支持 L1/L2/L3/L4 工作表</small></label></section><div id="warnings" class="warnings"></div><section class="metrics"><div><span id="totalRecords">0</span><small>筛选记录</small></div><div><span id="totalDowntime">0</span><small>停机分钟</small></div><div><span id="totalTypes">0</span><small>设备类型</small></div><div><span id="totalMonths">0</span><small>月份</small></div></section><section class="panel result-panel"><div class="result-head"><h2>图表分析</h2><div style="display:flex;align-items:center;gap:8px;"><select id="chartMonth"></select><button id="refreshChartsBtn" class="secondary" title="刷新图表" style="min-height:30px;font-size:12px;padding:0 10px;">⟳ 刷新</button></div></div><div class="tabs"><button data-chart="pareto" class="active">停机柏拉图</button><button data-chart="mttr">MTTR/MTBF</button><button data-chart="trend">故障推移</button></div><div id="paretoChart" class="chart active"></div><div id="mttrChart" class="chart"></div><div id="trendChart" class="chart"></div></section><section class="panel result-panel"><div class="result-head"><h2>筛选明细</h2><div class="table-tools"><input id="tableSearch" placeholder="搜索问题、机器、责任人" /><select id="monthFilter"></select><select id="typeFilter"></select><select id="lineFilter"><option value="全部">全部线体</option></select>
     <select id="sortOrderSelect"><option value="desc">降序</option><option value="asc">升序</option></select>
-    <select id="sortSelect"><option value="downtime">按停机时长</option><option value="date">按日期</option><option value="machineType">按设备类型</option></select></div></div><div class="data-toolbar" id="dataToolbar"><label class="check-label"><input type="checkbox" id="selectAllCheck" /> 全选</label><span id="selectionCount" class="muted"></span><button id="addRecordBtn" class="secondary">新增</button><button id="editRecordBtn" class="secondary" disabled>修改</button><button id="deleteRecordsBtn" class="secondary danger-btn" disabled>删除</button></div><div class="table-wrap"><table><thead><tr><th style="width:36px;"></th><th>日期</th><th>线体</th><th>时间</th><th>停机</th><th>设备类型</th><th>问题描述</th><th>责任</th></tr></thead><tbody id="recordRows"></tbody></table></div><div class="pagination" id="pagination"></div></section></section><section id="basicPanel" class="page-view panel config-workspace"><div class="result-head"><h2>基础规则</h2></div><div class="form-grid"><label>工作表<input id="sheetsInput" /></label><label>责任部门包含<input id="departmentInput" /></label><label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" /></label><label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" placeholder="不限制" /></label></div><div style="margin-top:14px;text-align:right;"><button id="saveBasicBtn" class="primary">保存并应用</button></div></section><section id="keywordPanel" class="page-view panel config-workspace"><div class="result-head"><h2>关键词</h2></div><label><span class="label-row">高亮关键词<span class="field-note">在故障内容中高亮以下关键词</span></span><textarea id="highlightInput"></textarea></label><div class="mini-title-row"><div class="mini-title">包含规则</div><button id="addIncludeBtn" class="icon-btn" title="新增包含规则">+</button></div><div id="includeRules"></div><div class="mini-title-row"><div class="mini-title">排除规则</div><button id="addExcludeBtn" class="icon-btn" title="新增排除规则">+</button></div><div id="excludeRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveKeywordBtn" class="primary">保存并应用</button></div></section><section id="classPanel" class="page-view panel config-workspace"><div class="result-head"><h2>分类规则</h2></div><div class="section-title"><span></span><button id="addClassBtn" class="icon-btn" title="新增分类">+</button></div><div class="class-header"><span>机器</span><span>关键词</span></div><div id="classRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveClassBtn" class="primary">保存并应用</button></div></section></section></main>`;
+    <select id="sortSelect"><option value="downtime">按停机时长</option><option value="date">按日期</option><option value="machineType">按设备类型</option></select></div></div><div class="data-toolbar" id="dataToolbar"><label class="check-label"><input type="checkbox" id="selectAllCheck" /> 全选</label><span id="selectionCount" class="muted"></span><button id="addRecordBtn" class="secondary">新增</button><button id="editRecordBtn" class="secondary" disabled>修改</button><button id="deleteRecordsBtn" class="secondary danger-btn" disabled>删除</button></div><div class="table-wrap"><table><thead><tr><th style="width:36px;"></th><th>日期</th><th>线体</th><th>时间</th><th>停机</th><th>设备类型</th><th>问题描述</th><th>责任</th></tr></thead><tbody id="recordRows"></tbody></table></div><div class="pagination" id="pagination"></div></section></section><section id="basicPanel" class="page-view panel config-workspace"><div class="result-head"><h2>基础规则</h2></div><div class="form-grid"><label>工作表<input id="sheetsInput" /></label><label>责任部门包含<input id="departmentInput" /></label><label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" /></label><label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" placeholder="不限制" /></label></div><label style="grid-column:span 2;">GitHub Token <span class="field-note">用于完整导出(需 workflow 权限)</span><input id="ghTokenInput" type="password" placeholder="ghp_..." /></label><div style="margin-top:14px;text-align:right;"><button id="saveBasicBtn" class="primary">保存并应用</button></div></section><section id="keywordPanel" class="page-view panel config-workspace"><div class="result-head"><h2>关键词</h2></div><label><span class="label-row">高亮关键词<span class="field-note">在故障内容中高亮以下关键词</span></span><textarea id="highlightInput"></textarea></label><div class="mini-title-row"><div class="mini-title">包含规则</div><button id="addIncludeBtn" class="icon-btn" title="新增包含规则">+</button></div><div id="includeRules"></div><div class="mini-title-row"><div class="mini-title">排除规则</div><button id="addExcludeBtn" class="icon-btn" title="新增排除规则">+</button></div><div id="excludeRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveKeywordBtn" class="primary">保存并应用</button></div></section><section id="classPanel" class="page-view panel config-workspace"><div class="result-head"><h2>分类规则</h2></div><div class="section-title"><span></span><button id="addClassBtn" class="icon-btn" title="新增分类">+</button></div><div class="class-header"><span>机器</span><span>关键词</span></div><div id="classRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveClassBtn" class="primary">保存并应用</button></div></section></section></main>`;
 
 bindEvents();
 renderRuleEditors();
@@ -254,6 +284,7 @@ function bindEvents(): void {
   bindInputNoRun("#minDowntimeInput", (value) => { config.minDowntime = Number(value) || 0; });
   bindInputNoRun("#maxDowntimeInput", (value) => { config.maxDowntime = Number(value) || 0; });
   bindInputNoRun("#highlightInput", (value) => { config.highlightKeywords = splitList(value); });
+  bindInputNoRun("#ghTokenInput", (value) => { ghToken = value.trim(); });
 
   document.querySelector("#saveBasicBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); showToast("✓ 保存成功"); });
   document.querySelector("#saveKeywordBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); showToast("✓ 保存成功"); });

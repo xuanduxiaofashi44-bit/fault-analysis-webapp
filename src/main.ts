@@ -22,6 +22,8 @@ let searchText = "";
 let monthFilter = "全部";
 let typeFilter = "全部";
 let sortKey: SortKey = "downtime";
+let lineFilter = "全部";
+let sortOrder: "asc" | "desc" = "desc";
 let sidebarOpen = true;
 let activePage = "mainPage";
 let selectedIds = new Set<string>();
@@ -30,6 +32,20 @@ let pageSize = 20;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("App root missing");
+
+
+// ===== Loading =====
+let loadingOverlay: HTMLDivElement | null = null;
+function showLoading(message: string): void {
+  if (loadingOverlay) { loadingOverlay.querySelector(".loading-text")!.textContent = message; return; }
+  loadingOverlay = document.createElement("div");
+  loadingOverlay.className = "loading-overlay";
+  loadingOverlay.innerHTML = '<div class="spinner-ring"></div><div class="loading-text">' + message + '</div>';
+  document.body.appendChild(loadingOverlay);
+}
+function hideLoading(): void {
+  if (loadingOverlay) { loadingOverlay.classList.add("loading-fade"); setTimeout(() => { loadingOverlay?.remove(); loadingOverlay = null; }, 300); }
+}
 
 // ===== Toast =====
 function showToast(message: string): void {
@@ -114,7 +130,7 @@ function updateLoginUI(): void {
 
 function showLoginModal(): void {
   const users = loadUsers();
-  const existing = users.map(u => `<div class="user-pick-row"><button class="user-pick-btn">${escapeHtml(u)}</button><button class="user-del-btn" data-username="${escapeHtml(u)}" title="删除账号（保留数据）">×</button></div>`).join("");
+  const existing = users.map(u => `<div class="user-pick-row"><button class="user-pick-btn">${escapeHtml(u)}<button class="user-del-btn" data-username="${escapeHtml(u)}" title="删除账号(保留数据)">×</button></button></div>`).join("");
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `<div class="modal login-modal"><h3>选择或创建账号</h3>${existing ? `<div class="user-pick-list">${existing}</div>` : ""}<div class="login-new"><input id="newUsername" placeholder="输入新账号名" maxlength="20" /><button id="loginNewBtn" class="primary">进入</button></div>${currentUser ? `<button id="loginCancelBtn" class="secondary" style="margin-top:8px;">返回</button>` : ""}</div>`;
@@ -198,7 +214,9 @@ function showEditModal(record?: FaultRecord): void {
 }
 
 // ======= init app =======
-app.innerHTML = `<header class="topbar"><div><h1>设备故障数据分析</h1><p>上传 Excel，配置筛选关键词，生成明细、柏拉图、MTTR/MTBF 和故障推移。</p></div><div class="topbar-right"><span id="loginArea"></span><button id="exportBtn" class="primary" disabled>导出 Excel</button></div></header><main class="layout"><aside class="sidebar"><nav class="side-nav" aria-label="功能导航"><div class="side-brand"><span>设</span><strong>故障分析</strong></div><button id="sidebarToggle" class="sidebar-toggle" aria-expanded="true" aria-label="收起规则">☰</button><button class="side-nav-item active" data-page="mainPage"><span class="nav-icon">主</span><span>首页</span></button><button class="side-nav-item" data-page="basicPanel"><span class="nav-icon">基</span><span>基础规则</span></button><button class="side-nav-item" data-page="keywordPanel"><span class="nav-icon">关</span><span>关键词</span></button><button class="side-nav-item" data-page="classPanel"><span class="nav-icon">分</span><span>分类规则</span></button></nav></aside><button id="sidebarOpenToggle" class="sidebar-open-toggle" aria-label="展开规则">☰</button><section class="workspace"><section id="mainPage" class="page-view active"><section class="panel upload-panel main-upload"><div><h2>文件上传</h2><div id="fileMeta" class="muted">尚未上传文件</div></div><label class="dropzone"><input id="fileInput" type="file" accept=".xlsx,.xls" /><span>选择 Excel 文件</span><small>支持 L1/L2/L3/L4 工作表</small></label></section><div id="warnings" class="warnings"></div><section class="metrics"><div><span id="totalRecords">0</span><small>筛选记录</small></div><div><span id="totalDowntime">0</span><small>停机分钟</small></div><div><span id="totalTypes">0</span><small>设备类型</small></div><div><span id="totalMonths">0</span><small>月份</small></div></section><section class="panel result-panel"><div class="result-head"><h2>图表分析</h2><select id="chartMonth"></select></div><div class="tabs"><button data-chart="pareto" class="active">停机柏拉图</button><button data-chart="mttr">MTTR/MTBF</button><button data-chart="trend">故障推移</button></div><div id="paretoChart" class="chart active"></div><div id="mttrChart" class="chart"></div><div id="trendChart" class="chart"></div></section><section class="panel result-panel"><div class="result-head"><h2>筛选明细</h2><div class="table-tools"><input id="tableSearch" placeholder="搜索问题、机器、责任人" /><select id="monthFilter"></select><select id="typeFilter"></select><select id="sortSelect"><option value="downtime">按停机时长</option><option value="date">按日期</option><option value="machineType">按设备类型</option></select></div></div><div class="data-toolbar" id="dataToolbar"><label class="check-label"><input type="checkbox" id="selectAllCheck" /> 全选</label><span id="selectionCount" class="muted"></span><button id="addRecordBtn" class="secondary">新增</button><button id="editRecordBtn" class="secondary" disabled>修改</button><button id="deleteRecordsBtn" class="secondary danger-btn" disabled>删除</button></div><div class="table-wrap"><table><thead><tr><th style="width:36px;"></th><th>日期</th><th>线体</th><th>时间</th><th>停机</th><th>设备类型</th><th>问题描述</th><th>责任</th></tr></thead><tbody id="recordRows"></tbody></table></div><div class="pagination" id="pagination"></div></section></section><section id="basicPanel" class="page-view panel config-workspace"><div class="result-head"><h2>基础规则</h2></div><div class="form-grid"><label>工作表<input id="sheetsInput" /></label><label>责任部门包含<input id="departmentInput" /></label><label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" /></label><label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" placeholder="不限制" /></label></div><div style="margin-top:14px;text-align:right;"><button id="saveBasicBtn" class="primary">保存并应用</button></div></section><section id="keywordPanel" class="page-view panel config-workspace"><div class="result-head"><h2>关键词</h2></div><label><span class="label-row">高亮关键词<span class="field-note">在故障内容中高亮以下关键词</span></span><textarea id="highlightInput"></textarea></label><div class="mini-title-row"><div class="mini-title">包含规则</div><button id="addIncludeBtn" class="icon-btn" title="新增包含规则">+</button></div><div id="includeRules"></div><div class="mini-title-row"><div class="mini-title">排除规则</div><button id="addExcludeBtn" class="icon-btn" title="新增排除规则">+</button></div><div id="excludeRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveKeywordBtn" class="primary">保存并应用</button></div></section><section id="classPanel" class="page-view panel config-workspace"><div class="result-head"><h2>分类规则</h2></div><div class="section-title"><span></span><button id="addClassBtn" class="icon-btn" title="新增分类">+</button></div><div class="class-header"><span>机器</span><span>关键词</span></div><div id="classRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveClassBtn" class="primary">保存并应用</button></div></section></section></main>`;
+app.innerHTML = `<header class="topbar"><div><h1>设备故障数据分析</h1><p>上传 Excel，配置筛选关键词，生成明细、柏拉图、MTTR/MTBF 和故障推移。</p></div><div class="topbar-right"><span id="loginArea"></span><button id="exportBtn" class="primary" disabled>导出 Excel</button></div></header><main class="layout"><aside class="sidebar"><nav class="side-nav" aria-label="功能导航"><div class="side-brand"><span>设</span><strong>故障分析</strong></div><button id="sidebarToggle" class="sidebar-toggle" aria-expanded="true" aria-label="收起规则">☰</button><button class="side-nav-item active" data-page="mainPage"><span class="nav-icon">主</span><span>首页</span></button><button class="side-nav-item" data-page="basicPanel"><span class="nav-icon">基</span><span>基础规则</span></button><button class="side-nav-item" data-page="keywordPanel"><span class="nav-icon">关</span><span>关键词</span></button><button class="side-nav-item" data-page="classPanel"><span class="nav-icon">分</span><span>分类规则</span></button></nav></aside><button id="sidebarOpenToggle" class="sidebar-open-toggle" aria-label="展开规则">☰</button><section class="workspace"><section id="mainPage" class="page-view active"><section class="panel upload-panel main-upload"><div><h2>文件上传</h2><div id="fileMeta" class="muted">尚未上传文件</div></div><label class="dropzone"><input id="fileInput" type="file" accept=".xlsx,.xls" /><span>选择 Excel 文件</span><small>支持 L1/L2/L3/L4 工作表</small></label></section><div id="warnings" class="warnings"></div><section class="metrics"><div><span id="totalRecords">0</span><small>筛选记录</small></div><div><span id="totalDowntime">0</span><small>停机分钟</small></div><div><span id="totalTypes">0</span><small>设备类型</small></div><div><span id="totalMonths">0</span><small>月份</small></div></section><section class="panel result-panel"><div class="result-head"><h2>图表分析</h2><div style="display:flex;align-items:center;gap:8px;"><select id="chartMonth"></select><button id="refreshChartsBtn" class="secondary" title="刷新图表" style="min-height:30px;font-size:12px;padding:0 10px;">⟳ 刷新</button></div></div><div class="tabs"><button data-chart="pareto" class="active">停机柏拉图</button><button data-chart="mttr">MTTR/MTBF</button><button data-chart="trend">故障推移</button></div><div id="paretoChart" class="chart active"></div><div id="mttrChart" class="chart"></div><div id="trendChart" class="chart"></div></section><section class="panel result-panel"><div class="result-head"><h2>筛选明细</h2><div class="table-tools"><input id="tableSearch" placeholder="搜索问题、机器、责任人" /><select id="monthFilter"></select><select id="typeFilter"></select><select id="lineFilter"><option value="全部">全部线体</option></select>
+    <select id="sortOrderSelect"><option value="desc">降序</option><option value="asc">升序</option></select>
+    <select id="sortSelect"><option value="downtime">按停机时长</option><option value="date">按日期</option><option value="machineType">按设备类型</option></select></div></div><div class="data-toolbar" id="dataToolbar"><label class="check-label"><input type="checkbox" id="selectAllCheck" /> 全选</label><span id="selectionCount" class="muted"></span><button id="addRecordBtn" class="secondary">新增</button><button id="editRecordBtn" class="secondary" disabled>修改</button><button id="deleteRecordsBtn" class="secondary danger-btn" disabled>删除</button></div><div class="table-wrap"><table><thead><tr><th style="width:36px;"></th><th>日期</th><th>线体</th><th>时间</th><th>停机</th><th>设备类型</th><th>问题描述</th><th>责任</th></tr></thead><tbody id="recordRows"></tbody></table></div><div class="pagination" id="pagination"></div></section></section><section id="basicPanel" class="page-view panel config-workspace"><div class="result-head"><h2>基础规则</h2></div><div class="form-grid"><label>工作表<input id="sheetsInput" /></label><label>责任部门包含<input id="departmentInput" /></label><label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" /></label><label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" placeholder="不限制" /></label></div><div style="margin-top:14px;text-align:right;"><button id="saveBasicBtn" class="primary">保存并应用</button></div></section><section id="keywordPanel" class="page-view panel config-workspace"><div class="result-head"><h2>关键词</h2></div><label><span class="label-row">高亮关键词<span class="field-note">在故障内容中高亮以下关键词</span></span><textarea id="highlightInput"></textarea></label><div class="mini-title-row"><div class="mini-title">包含规则</div><button id="addIncludeBtn" class="icon-btn" title="新增包含规则">+</button></div><div id="includeRules"></div><div class="mini-title-row"><div class="mini-title">排除规则</div><button id="addExcludeBtn" class="icon-btn" title="新增排除规则">+</button></div><div id="excludeRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveKeywordBtn" class="primary">保存并应用</button></div></section><section id="classPanel" class="page-view panel config-workspace"><div class="result-head"><h2>分类规则</h2></div><div class="section-title"><span></span><button id="addClassBtn" class="icon-btn" title="新增分类">+</button></div><div class="class-header"><span>机器</span><span>关键词</span></div><div id="classRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveClassBtn" class="primary">保存并应用</button></div></section></section></main>`;
 
 bindEvents();
 renderRuleEditors();
@@ -222,9 +240,11 @@ function bindEvents(): void {
     if (!file) return;
     if (!file.name.match(/\.xlsx?$/i)) { setWarnings(["请上传 .xlsx 或 .xls 文件"]); return; }
     const buffer = await file.arrayBuffer();
+    showLoading("正在分析数据...");
     workbook = XLSX.read(buffer, { type: "array" });
     document.querySelector("#fileMeta")!.textContent = `${file.name} · ${workbook.SheetNames.length} 个工作表`;
     runAnalysis();
+    hideLoading();
   });
 
   bindInputNoRun("#sheetsInput", (value) => { config.sheets = splitList(value); });
@@ -249,6 +269,7 @@ function bindEvents(): void {
   document.querySelector("#deleteRecordsBtn")?.addEventListener("click", () => deleteSelectedRecords());
 
   document.querySelector("#chartMonth")?.addEventListener("change", (event) => { selectedMonth = (event.target as HTMLSelectElement).value; if (result) renderCharts(result, selectedMonth); });
+  document.querySelector("#refreshChartsBtn")?.addEventListener("click", () => { if (result) { renderCharts(result, selectedMonth); updateChartVisibility(); showToast("✓ 图表已刷新"); } });
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((button) => {
     button.addEventListener("click", () => { activeChart = button.dataset.chart ?? "pareto"; updateChartVisibility(); });
   });
@@ -256,6 +277,8 @@ function bindEvents(): void {
   bindInputNoRun("#tableSearch", (value) => { searchText = value.trim(); currentPage = 1; renderTable(); });
   document.querySelector("#monthFilter")?.addEventListener("change", (event) => { monthFilter = (event.target as HTMLSelectElement).value; currentPage = 1; selectedIds.clear(); renderTable(); });
   document.querySelector("#typeFilter")?.addEventListener("change", (event) => { typeFilter = (event.target as HTMLSelectElement).value; currentPage = 1; selectedIds.clear(); renderTable(); });
+  document.querySelector("#lineFilter")?.addEventListener("change", (event) => { lineFilter = (event.target as HTMLSelectElement).value; currentPage = 1; selectedIds.clear(); renderTable(); });
+  document.querySelector("#sortOrderSelect")?.addEventListener("change", (event) => { sortOrder = (event.target as HTMLSelectElement).value as "asc" | "desc"; currentPage = 1; renderTable(); });
   document.querySelector("#sortSelect")?.addEventListener("change", (event) => { sortKey = (event.target as HTMLSelectElement).value as SortKey; currentPage = 1; renderTable(); });
   window.addEventListener("resize", resizeCharts);
 }
@@ -269,6 +292,7 @@ function runAnalysis(): void {
   result = analyzeWorkbook(workbook, config);
   currentPage = 1;
   selectedIds.clear();
+  lineFilter = "全部";
   renderResult();
 }
 
@@ -296,11 +320,12 @@ function getFilteredRows(): FaultRecord[] {
   return result.records
     .filter(r => monthFilter === "全部" || r.date.startsWith(monthFilter))
     .filter(r => typeFilter === "全部" || r.machineType === typeFilter)
+    .filter(r => lineFilter === "全部" || r.line === lineFilter)
     .filter(r => !searchText || [r.description, r.machine, r.owner, r.department].some(v => v.includes(searchText)))
     .sort((a, b) => {
-      if (sortKey === "date") return b.date.localeCompare(a.date);
-      if (sortKey === "machineType") return a.machineType.localeCompare(b.machineType);
-      return b.downtime - a.downtime;
+      if (sortKey === "date") return sortOrder === "asc" ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date);
+      if (sortKey === "machineType") return sortOrder === "asc" ? a.machineType.localeCompare(b.machineType) : b.machineType.localeCompare(a.machineType);
+      return sortOrder === "asc" ? a.downtime - b.downtime : b.downtime - a.downtime;
     });
 }
 
@@ -358,6 +383,7 @@ function renderResult(): void {
   fillSelect("#chartMonth", ["合计", ...result.months], selectedMonth);
   fillSelect("#monthFilter", ["全部", ...result.months], monthFilter);
   fillSelect("#typeFilter", ["全部", ...result.typeSummary.map(r => r.type)], typeFilter);
+  fillSelect("#lineFilter", ["全部", ...new Set(result.records.map(r => r.line)).values()].sort(), lineFilter);
   renderCharts(result, selectedMonth);
   updateChartVisibility();
   renderTable();

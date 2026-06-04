@@ -12,6 +12,29 @@ export function getChartInstance(kind: "pareto" | "mttr" | "trend"): echarts.ECh
   return trendChart;
 }
 
+/** 懒初始化：拿实例，不存在则 new；始终返回非 null */
+export function ensureChart(kind: "pareto" | "mttr" | "trend"): echarts.ECharts {
+  if (kind === "pareto") {
+    if (!paretoChart) {
+      const el = document.querySelector<HTMLDivElement>("#paretoChart");
+      if (el) paretoChart = echarts.init(el);
+    }
+    return paretoChart!;
+  }
+  if (kind === "mttr") {
+    if (!mttrChart) {
+      const el = document.querySelector<HTMLDivElement>("#mttrChart");
+      if (el) mttrChart = echarts.init(el);
+    }
+    return mttrChart!;
+  }
+  if (!trendChart) {
+    const el = document.querySelector<HTMLDivElement>("#trendChart");
+    if (el) trendChart = echarts.init(el);
+  }
+  return trendChart!;
+}
+
 export function renderCharts(result: AnalysisResult, selectedMonth: string): void {
   const paretoElement = document.querySelector<HTMLDivElement>("#paretoChart");
   const mttrElement = document.querySelector<HTMLDivElement>("#mttrChart");

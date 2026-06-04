@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { analyzeWorkbook, splitList } from "./analysis";
-import { renderCharts, resizeCharts, renderParetoInline, renderMttrInline, renderTrendInline, renderDailyTrendInline, getChartInstance } from "./charts";
+import { renderCharts, resizeCharts, renderParetoInline, renderMttrInline, renderTrendInline, renderDailyTrendInline, ensureChart } from "./charts";
 import { defaultConfig, availableKeywordFields } from "./defaults";
 import { exportFullReport, type ExportOptions } from "./export";
 import type { AnalysisConfig, AnalysisResult, ClassificationRule, KeywordRule, FaultRecord } from "./types";
@@ -525,13 +525,13 @@ function renderActiveChartOnly(): void {
   if (!result) return;
   const typeData = selectedMonth === "合计" ? result.typeSummary : result.typeSummaryByMonth[selectedMonth] ?? [];
   if (activeChart === "pareto") {
-    const p = getChartInstance("pareto");
-    if (p) renderParetoInline(p, typeData, selectedMonth);
+      const p = ensureChart("pareto");
+      if (p) renderParetoInline(p, typeData, selectedMonth);
   } else if (activeChart === "mttr") {
-    const m = getChartInstance("mttr");
+    const m = ensureChart("mttr");
     if (m) renderMttrInline(m, typeData, selectedMonth);
   } else {
-    const t = getChartInstance("trend");
+    const t = ensureChart("trend");
     if (t) {
       if (selectedMonth === "合计") renderTrendInline(t, result);
       else renderDailyTrendInline(t, result, selectedMonth);

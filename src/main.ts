@@ -405,8 +405,8 @@ function renderResult(): void {
   const lines = [...new Set(result.records.map(r => r.line).filter(Boolean))].sort();
   fillSelect("#lineFilter", ["全部", ...lines], lineFilter);
   _invalidateFilterCache();
-  renderActiveChartOnly();
   updateChartVisibility();
+  renderActiveChartOnly();
   renderTable();
 }
 

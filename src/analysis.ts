@@ -152,13 +152,17 @@ function matchesRuleGroup(record: FaultRecord, rules: KeywordRule[], emptyDefaul
 }
 
 function classify(record: { description: string; machine: string }, config: AnalysisConfig): string {
-  for (const rule of config.classificationRules) {
-    const haystack = rule.field === "machine" ? (record.machine ?? "") : (record.description ?? "");
-    if (rule.keywords.some((keyword) => keyword && haystack.includes(keyword))) {
-      return rule.type;
+  const machineRules = config.classificationRules.filter(r => r.field === "machine");
+  const descRules = config.classificationRules.filter(r => r.field !== "machine");
+  for (const rules of [machineRules, descRules]) {
+    for (const rule of rules) {
+      const haystack = rule.field === "machine" ? (record.machine ?? "") : (record.description ?? "");
+      if (rule.keywords.some((keyword) => keyword && haystack.includes(keyword))) {
+        return rule.type;
+      }
     }
   }
-  return "未分类";
+return "未分类";
 }
 
 function dedupeRecords(records: FaultRecord[]): FaultRecord[] {

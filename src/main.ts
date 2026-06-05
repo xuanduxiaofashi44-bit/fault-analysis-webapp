@@ -394,9 +394,13 @@ function recalcSummaries(): void {
   if (!result || !workbook) return;
   const r = result;
 const classifyLocal = (record: FaultRecord): string => {
-for (const rule of config.classificationRules) {
-      const haystack = rule.field === "machine" ? (record.machine ?? "") : (record.description ?? "");
-      if (rule.keywords.some((kw) => kw && haystack.includes(kw))) return rule.type;
+    const machineRules = config.classificationRules.filter(r => r.field === "machine");
+    const descRules = config.classificationRules.filter(r => r.field !== "machine");
+    for (const rules of [machineRules, descRules]) {
+      for (const rule of rules) {
+        const haystack = rule.field === "machine" ? (record.machine ?? "") : (record.description ?? "");
+        if (rule.keywords.some((kw) => kw && haystack.includes(kw))) return rule.type;
+      }
     }
     return "未分类";
   };

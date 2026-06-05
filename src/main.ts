@@ -611,7 +611,7 @@ function renderActiveChartOnly(): void {
       const p = ensureChart("pareto");
       if (p) {
         const data = paretoMode === "byLine"
-          ? buildLineTypeSummary(chartResult.records, selectedMonth === "合计" ? undefined : selectedMonth)
+          ? buildLineTypeSummary(selectedMonth === "合计" ? chartResult.records : chartResult.records.filter((r) => r.date.startsWith(selectedMonth)), selectedMonth === "合计" ? undefined : selectedMonth)
           : typeData;
         renderParetoInline(p, data, selectedMonth);
       }

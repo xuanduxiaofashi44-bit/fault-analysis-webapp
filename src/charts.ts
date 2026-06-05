@@ -1,6 +1,6 @@
 import * as echarts from "echarts";
-import type { AnalysisResult, TypeSummary } from "./types";
-import { buildDailySummary, type DailySummary } from "./analysis";
+import type { AnalysisResult, DailySummary, TypeSummary } from "./types";
+import { buildDailySummary } from "./analysis";
 
 let paretoChart: echarts.ECharts | null = null;
 let mttrChart: echarts.ECharts | null = null;

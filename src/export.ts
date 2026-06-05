@@ -294,7 +294,15 @@ export async function exportViaGitHubActions(
   const ts = Date.now();
   const filePath = `data/exports/export_${ts}.json`;
   const jsonStr = JSON.stringify(payload, null, 2);
-  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(jsonStr)));
+  // Encode UTF-8 string to base64 in chunks to avoid stack overflow with large payloads
+  const b64 = (() => {
+    const bytes = new TextEncoder().encode(jsonStr);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 4096) {
+      binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 4096, bytes.length)));
+    }
+    return btoa(binary);
+  })();
 
   onStatus("正在上传数据...");
   await ghFetch(token, `/repos/${GH_REPO}/contents/${filePath}`, {
@@ -332,7 +340,7 @@ export async function exportViaGitHubActions(
     const run = runsData.workflow_runs?.find((r: any) =>
       r.head_branch === "main" &&
       r.event === "workflow_dispatch" &&
-      new Date(r.created_at).getTime() > ts - 60000
+      new Date(r.created_at).getTime() >= ts
     );
     if (run) {
       runId = run.id;

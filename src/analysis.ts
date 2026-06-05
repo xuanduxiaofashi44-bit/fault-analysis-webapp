@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { AnalysisConfig, AnalysisResult, FaultRecord, KeywordRule, MonthSummary, TypeSummary } from "./types";
+import type { AnalysisConfig, AnalysisResult, DailySummary, FaultRecord, KeywordRule, MonthSummary, TypeSummary } from "./types";
 
 const fieldGetters: Record<string, (record: FaultRecord) => string> = {
   description: (record) => record.description,
@@ -156,14 +156,14 @@ function classify(description: string, config: AnalysisConfig): string {
       return rule.type;
     }
   }
-  return config.classificationRules[config.classificationRules.length - 1]?.type || "未分类";
+  return "未分类";
 }
 
 function dedupeRecords(records: FaultRecord[]): FaultRecord[] {
   const seen = new Set<string>();
   const output: FaultRecord[] = [];
   for (const record of records) {
-    const key = `${record.date}|${record.startTime}|${record.endTime}`;
+    const key = `${record.date}|${record.line}|${record.startTime}|${record.endTime}`;
     if (seen.has(key)) continue;
     seen.add(key);
     output.push(record);
@@ -213,7 +213,7 @@ export function buildMonthSummary(records: FaultRecord[], months: string[]): Mon
       count,
       downtime: round1(downtime),
       dailyDowntime: round1(downtime / days),
-      faultRate: round1((downtime / (days * 24 * 60)) * 100 / 32),
+      faultRate: round1((downtime / (days * 24 * 60)) * 100),
       mttr: count ? round1(downtime / count) : 0,
       mtbf: count ? round1((days * 24 * 60) / count / 60) : 0
     };
@@ -224,14 +224,7 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-export type DailySummary = {
-  day: string;
-  count: number;
-  downtime: number;
-  faultRate: number;
-  mttr: number;
-  mtbf: number;
-};
+
 
 export function buildDailySummary(records: FaultRecord[], month: string): DailySummary[] {
   const days = daysInMonth(month);
@@ -245,7 +238,7 @@ export function buildDailySummary(records: FaultRecord[], month: string): DailyS
       day,
       count,
       downtime: round1(downtime),
-      faultRate: round1((downtime / (24 * 60)) * 100 / 32),
+      faultRate: round1((downtime / (24 * 60)) * 100),
       mttr: count ? round1(downtime / count) : 0,
       mtbf: count ? round1(24 * 60 / count / 60) : 0
     });

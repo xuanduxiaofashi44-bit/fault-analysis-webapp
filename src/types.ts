@@ -60,6 +60,15 @@ export type MonthSummary = {
   mtbf: number;
 };
 
+export type DailySummary = {
+  day: string;
+  count: number;
+  downtime: number;
+  faultRate: number;
+  mttr: number;
+  mtbf: number;
+};
+
 export type AnalysisResult = {
   records: FaultRecord[];
   warnings: string[];

@@ -376,7 +376,7 @@ function updateLineScopedViews(): void {
   const scoped = getLineScopedResult();
   if (scoped) {
     updateMetrics(scoped);
-    fillSelect("#chartMonth", ["合计", ...scoped.months], selectedMonth);
+    selectedMonth = fillSelect("#chartMonth", ["合计", ...scoped.months], selectedMonth);
   }
   renderActiveChartOnly();
   renderTable();
@@ -384,7 +384,25 @@ function updateLineScopedViews(): void {
 
 function recalcSummaries(): void {
   if (!result || !workbook) return;
-  result = analyzeWorkbook(workbook, config);
+  const r = result;
+  const classifyLocal = (desc: string): string => {
+    for (const rule of config.classificationRules) {
+      if (rule.keywords.some((kw) => kw && desc.includes(kw))) return rule.type;
+    }
+    return "未分类";
+  };
+  // 只重新分类和高亮，不重新筛选，保留手动编辑
+  r.records = r.records.map((record) => ({
+    ...record,
+    machineType: classifyLocal(record.description),
+    highlighted: config.highlightKeywords.some((kw) => kw && record.description.includes(kw))
+  }));
+  const months = [...new Set(r.records.map((rec) => rec.date.slice(0, 7)).filter(Boolean))].sort();
+  r.months = months;
+  r.typeSummary = buildTypeSummary(r.records);
+  r.typeSummaryByMonth = Object.fromEntries(months.map((m) => [m, buildTypeSummary(r.records.filter((rec) => rec.date.startsWith(m)), m)]));
+  r.monthSummary = buildMonthSummary(r.records, months);
+
 }
 
 // ===== Rule editors =====
@@ -436,13 +454,13 @@ function renderResult(): void {
   document.querySelector("#exportBtn")?.removeAttribute("disabled");
   // 填充线体筛选
   const lines = [...new Set(result.records.map(r => r.line).filter(Boolean))].sort();
-  fillSelect("#lineFilter", ["全部", ...lines], lineFilter);
+  lineFilter = fillSelect("#lineFilter", ["全部", ...lines], lineFilter);
   fillSelect("#chartLineFilter", ["全部", ...lines], lineFilter);
   const scoped = getLineScopedResult() ?? result;
   updateMetrics(scoped);
-  fillSelect("#chartMonth", ["合计", ...scoped.months], selectedMonth);
-  fillSelect("#monthFilter", ["全部", ...result.months], monthFilter);
-  fillSelect("#typeFilter", ["全部", ...result.typeSummary.map(r => r.type)], typeFilter);
+  selectedMonth = fillSelect("#chartMonth", ["合计", ...scoped.months], selectedMonth);
+  monthFilter = fillSelect("#monthFilter", ["全部", ...result.months], monthFilter);
+  typeFilter = fillSelect("#typeFilter", ["全部", ...result.typeSummary.map(r => r.type)], typeFilter);
   syncLineFilterSelects();
   _invalidateFilterCache();
   updateChartVisibility();
@@ -557,15 +575,13 @@ function setWarnings(warnings: string[]): void {
   el.innerHTML = warnings.length ? warnings.map(w => `<span>${escapeHtml(w)}</span>`).join("") : "";
 }
 
-function fillSelect(selector: string, values: string[], selected: string): void {
+/** Fill a <select> and return the actual selected value. */
+function fillSelect(selector: string, values: string[], selected: string): string {
   const select = document.querySelector<HTMLSelectElement>(selector);
-  if (!select) return;
+  if (!select) return selected;
   const nextSelected = values.includes(selected) ? selected : values[0];
   select.innerHTML = values.map(v => `<option value="${escapeHtml(v)}" ${v === nextSelected ? "selected" : ""}>${escapeHtml(v)}</option>`).join("");
-  if (selector === "#chartMonth") selectedMonth = nextSelected;
-  if (selector === "#monthFilter") monthFilter = nextSelected;
-  if (selector === "#typeFilter") typeFilter = nextSelected;
-  if (selector === "#lineFilter") lineFilter = nextSelected;
+  return nextSelected;
 }
 
 function renderActiveChartOnly(): void {
@@ -598,7 +614,7 @@ function updateSidebarState(): void {
   const button = document.querySelector<HTMLButtonElement>("#sidebarToggle");
   const openButton = document.querySelector<HTMLButtonElement>("#sidebarOpenToggle");
   layout?.classList.toggle("sidebar-collapsed", !sidebarOpen);
-  if (button) { button.textContent = "☰"; button.setAttribute("aria-label", sidebarOpen ? "收起规则" : "展开规则"); button.setAttribute("aria-expanded", String(sidebarOpen)); }
+  if (button) { button.textContent = sidebarOpen ? "◀" : "☰"; button.setAttribute("aria-label", sidebarOpen ? "收起规则" : "展开规则"); button.setAttribute("aria-expanded", String(sidebarOpen)); }
   if (openButton) openButton.hidden = true;
   window.setTimeout(resizeCharts, 180);
 }

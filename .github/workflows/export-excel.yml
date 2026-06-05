@@ -1,0 +1,44 @@
+name: Export Excel with Charts
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_file:
+        description: 'Path to the JSON data file in the repo (e.g. data/exports/export_20240604.json)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install openpyxl
+        run: pip install openpyxl
+
+      - name: Generate Excel
+        run: |
+          python scripts/export_charts.py "${{ inputs.data_file }}" output.xlsx
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 设备故障分析_图表
+          path: output.xlsx
+          retention-days: 1
+
+      - name: Cleanup data file
+        if: always()
+        run: |
+          rm -f "${{ inputs.data_file }}"

@@ -4,3 +4,5 @@ dist/
 localtunnel.out
 localtunnel.err
 lark-auth-qr.png
+
+assets/

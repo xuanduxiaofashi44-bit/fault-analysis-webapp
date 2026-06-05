@@ -21,14 +21,14 @@ export const defaultConfig: AnalysisConfig = {
   ],
   highlightKeywords: ["注液", "包膜", "尺寸", "薄膜", "氦检", "烘干", "激光", "密封", "待料", "工艺", "来料"],
   classificationRules: [
-    { type: "WCS", keywords: ["WCS", "wcs", "调度系统", "上位机", "通讯异常", "通讯故障", "通信异常", "通信故障", "网络通讯", "网络断开", "网络中断", "调度异常", "WMS", "wms"] },
-    { type: "堆垛机", keywords: ["堆垛机", "堆垛", "货叉", "载货台", "穿梭车", "RGV", "rgv", "堆垛车"] },
-    { type: "物流线", keywords: ["物流线", "物流", "提升机", "输送线", "输送", "滚筒", "倍速链", "倍速", "链条", "传送带", "传送", "皮带", "移载", "顶升", "转角", "转弯", "分拣", "拉带"] },
-    { type: "机械手", keywords: ["机械手", "机器人", "机械臂", "抓取", "夹爪", "夹具", "抓手", "robot", "Robot", "三坐标", "两坐标", "分选", "预分选", "压料"] },
-    { type: "OCV", keywords: ["OCV", "ocv", "开路电压", "开路"] },
-    { type: "DCIR", keywords: ["DCIR", "dcir", "直流内阻", "内阻"] },
-    { type: "分容", keywords: ["分容", "容量", "充放电", "充放", "放电", "充电", "针床", "探针", "压床", "库位", "托盘", "料盒"] },
-    { type: "化成", keywords: ["化成", "化成柜", "负压", "真空", "温控", "温度", "湿度", "注液", "溢液"] }
+    { type: "WCS", field: "description", keywords: ["WCS", "wcs", "调度系统", "上位机", "通讯异常", "通讯故障", "通信异常", "通信故障", "网络通讯", "网络断开", "网络中断", "调度异常", "WMS", "wms"] },
+    { type: "堆垛机", field: "description", keywords: ["堆垛机", "堆垛", "货叉", "载货台", "穿梭车", "RGV", "rgv", "堆垛车"] },
+    { type: "物流线", field: "description", keywords: ["物流线", "物流", "提升机", "输送线", "输送", "滚筒", "倍速链", "倍速", "链条", "传送带", "传送", "皮带", "移载", "顶升", "转角", "转弯", "分拣", "拉带"] },
+    { type: "机械手", field: "description", keywords: ["机械手", "机器人", "机械臂", "抓取", "夹爪", "夹具", "抓手", "robot", "Robot", "三坐标", "两坐标", "分选", "预分选", "压料"] },
+    { type: "OCV", field: "description", keywords: ["OCV", "ocv", "开路电压", "开路"] },
+    { type: "DCIR", field: "description", keywords: ["DCIR", "dcir", "直流内阻", "内阻"] },
+    { type: "分容", field: "description", keywords: ["分容", "容量", "充放电", "充放", "放电", "充电", "针床", "探针", "压床", "库位", "托盘", "料盒"] },
+    { type: "化成", field: "description", keywords: ["化成", "化成柜", "负压", "真空", "温控", "温度", "湿度", "注液", "溢液"] }
   ],
   columnMap: {
     date: "日期",

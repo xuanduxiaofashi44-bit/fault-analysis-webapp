@@ -8,6 +8,7 @@ export type KeywordRule = {
 
 export type ClassificationRule = {
   type: string;
+  field: "machine" | "description";
   keywords: string[];
 };
 

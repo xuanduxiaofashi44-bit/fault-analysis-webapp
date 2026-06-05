@@ -5,10 +5,12 @@ import { buildDailySummary } from "./analysis";
 let paretoChart: echarts.ECharts | null = null;
 let mttrChart: echarts.ECharts | null = null;
 let trendChart: echarts.ECharts | null = null;
+let mttrTrendChart: echarts.ECharts | null = null;
 
-export function getChartInstance(kind: "pareto" | "mttr" | "trend"): echarts.ECharts | null {
+export function getChartInstance(kind: "pareto" | "mttr" | "trend" | "mttrTrend"): echarts.ECharts | null {
   if (kind === "pareto") return paretoChart;
   if (kind === "mttr") return mttrChart;
+  if (kind === "mttrTrend") return mttrTrendChart;
   return trendChart;
 }
 
@@ -23,7 +25,7 @@ function _safeInit(el: HTMLDivElement, existing: echarts.ECharts | null): echart
 }
 
 /** 懒初始化 + 防dispose：始终返回可用的 echarts 实例 */
-export function ensureChart(kind: "pareto" | "mttr" | "trend"): echarts.ECharts {
+export function ensureChart(kind: "pareto" | "mttr" | "trend" | "mttrTrend"): echarts.ECharts {
   if (kind === "pareto") {
     const el = document.querySelector<HTMLDivElement>("#paretoChart");
     if (el) paretoChart = _safeInit(el, paretoChart);
@@ -34,9 +36,14 @@ export function ensureChart(kind: "pareto" | "mttr" | "trend"): echarts.ECharts 
     if (el) mttrChart = _safeInit(el, mttrChart);
     return mttrChart!;
   }
-  const el = document.querySelector<HTMLDivElement>("#trendChart");
-  if (el) trendChart = _safeInit(el, trendChart);
-  return trendChart!;
+  if (kind === "trend") {
+    const el = document.querySelector<HTMLDivElement>("#trendChart");
+    if (el) trendChart = _safeInit(el, trendChart);
+    return trendChart!;
+  }
+  const el = document.querySelector<HTMLDivElement>("#mttrTrendChart");
+  if (el) mttrTrendChart = _safeInit(el, mttrTrendChart);
+  return mttrTrendChart!;
 }
 
 export function renderCharts(result: AnalysisResult, selectedMonth: string): void {
@@ -63,6 +70,7 @@ export function resizeCharts(): void {
   paretoChart?.resize();
   mttrChart?.resize();
   trendChart?.resize();
+  mttrTrendChart?.resize();
 }
 
 export function renderParetoInline(chart: echarts.ECharts, rows: TypeSummary[], label: string): void {
@@ -146,6 +154,41 @@ export function renderTrendInline(chart: echarts.ECharts, result: AnalysisResult
     series: [
       { name: "故障率(%)", type: "bar", yAxisIndex: 1, data: result.monthSummary.map((row) => row.faultRate), label: { show: true, position: "top", fontSize: 10 } },
       { name: "停机总时长(min)", type: "line", data: result.monthSummary.map((row) => row.downtime) }
+    ]
+  });
+}
+
+/** MTTR/MTBF 月度推移 */
+export function renderMttrTrendInline(chart: echarts.ECharts, result: AnalysisResult): void {
+  chart.setOption({
+    title: { text: "月度 MTTR / MTBF 推移", left: 8, textStyle: { fontSize: 14 } },
+    color: ["#27ae60", "#9b51e0"],
+    tooltip: { trigger: "axis" },
+    legend: { top: 24 },
+    grid: { top: 72, left: 54, right: 48, bottom: 42 },
+    xAxis: { type: "category", data: result.monthSummary.map((row) => row.month) },
+    yAxis: { type: "value", name: "小时 / 分钟" },
+    series: [
+      { name: "MTTR(min)", type: "line", data: result.monthSummary.map((row) => row.mttr), label: { show: true, fontSize: 10 } },
+      { name: "MTBF(h)", type: "line", data: result.monthSummary.map((row) => row.mtbf), label: { show: true, fontSize: 10 } }
+    ]
+  });
+}
+
+/** MTTR/MTBF 每日推移 */
+export function renderDailyMttrTrendInline(chart: echarts.ECharts, result: AnalysisResult, month: string, deviceCount: number = 1): void {
+  const daily = buildDailySummary(result.records, month, deviceCount);
+  chart.setOption({
+    title: { text: `${month} 每日 MTTR / MTBF 推移`, left: 8, textStyle: { fontSize: 14 } },
+    color: ["#27ae60", "#9b51e0"],
+    tooltip: { trigger: "axis" },
+    legend: { top: 24 },
+    grid: { top: 72, left: 54, right: 48, bottom: 42 },
+    xAxis: { type: "category", data: daily.map((row) => row.day.slice(8)), name: "日" },
+    yAxis: { type: "value", name: "小时 / 分钟" },
+    series: [
+      { name: "MTTR(min)", type: "line", data: daily.map((row) => row.mttr), label: { show: true, fontSize: 10 } },
+      { name: "MTBF(h)", type: "line", data: daily.map((row) => row.mtbf), label: { show: true, fontSize: 10 } }
     ]
   });
 }

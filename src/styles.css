@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color: #17202a;
   background: #ffffff;
   font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
@@ -496,8 +496,8 @@ select:focus {
 .class-row {
   display: grid;
   gap: 6px;
-  grid-template-columns: 82px 1fr 30px;
-  margin-bottom: 8px;
+grid-template-columns: 82px 70px 1fr 30px;
+margin-bottom: 8px;
 }
 
 .class-header {
@@ -506,8 +506,8 @@ select:focus {
   font-size: 12px;
   font-weight: 700;
   gap: 6px;
-  grid-template-columns: 82px 1fr 30px;
-  margin: 2px 0 6px;
+grid-template-columns: 82px 70px 1fr 30px;
+margin: 2px 0 6px;
 }
 
 .class-row textarea {

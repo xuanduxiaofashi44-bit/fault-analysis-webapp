@@ -121,7 +121,7 @@ export function analyzeWorkbook(workbook: XLSX.WorkBook, config: AnalysisConfig)
     .filter((record) => matchesRuleGroup(record, config.includeKeywords, true))
     .filter((record) => !matchesRuleGroup(record, config.excludeKeywords, false))
     .map((record) => {
-      const machineType = classify(record.description, config);
+      const machineType = classify(record, config);
       const highlighted = config.highlightKeywords.some((keyword) => keyword && record.description.includes(keyword));
       return { ...record, machineType, highlighted };
     });
@@ -151,9 +151,10 @@ function matchesRuleGroup(record: FaultRecord, rules: KeywordRule[], emptyDefaul
   });
 }
 
-function classify(description: string, config: AnalysisConfig): string {
+function classify(record: { description: string; machine: string }, config: AnalysisConfig): string {
   for (const rule of config.classificationRules) {
-    if (rule.keywords.some((keyword) => keyword && description.includes(keyword))) {
+    const haystack = rule.field === "machine" ? (record.machine ?? "") : (record.description ?? "");
+    if (rule.keywords.some((keyword) => keyword && haystack.includes(keyword))) {
       return rule.type;
     }
   }

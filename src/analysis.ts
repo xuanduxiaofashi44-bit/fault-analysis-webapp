@@ -130,7 +130,8 @@ export function analyzeWorkbook(workbook: XLSX.WorkBook, config: AnalysisConfig)
   const months = [...new Set(deduped.map((record) => record.date.slice(0, 7)).filter(Boolean))].sort();
   const typeSummary = buildTypeSummary(deduped);
   const typeSummaryByMonth = Object.fromEntries(months.map((month) => [month, buildTypeSummary(deduped.filter((record) => record.date.startsWith(month)), month)]));
-  const monthSummary = buildMonthSummary(deduped, months);
+  const dc = getDeviceCount(config);
+  const monthSummary = buildMonthSummary(deduped, months, dc);
 
   return { records: deduped, warnings, months, typeSummary, typeSummaryByMonth, monthSummary };
 }
@@ -201,7 +202,7 @@ export function buildTypeSummary(records: FaultRecord[], month?: string): TypeSu
     });
 }
 
-export function buildMonthSummary(records: FaultRecord[], months: string[]): MonthSummary[] {
+export function buildMonthSummary(records: FaultRecord[], months: string[], deviceCount: number = 1): MonthSummary[] {
   return months.map((month) => {
     const monthRecords = records.filter((record) => record.date.startsWith(month));
     const days = daysInMonth(month);
@@ -213,11 +214,15 @@ export function buildMonthSummary(records: FaultRecord[], months: string[]): Mon
       count,
       downtime: round1(downtime),
       dailyDowntime: round1(downtime / days),
-      faultRate: round1((downtime / (days * 24 * 60)) * 100),
+      faultRate: round1((downtime / (days * 24 * 60 * deviceCount)) * 100),
       mttr: count ? round1(downtime / count) : 0,
       mtbf: count ? round1((days * 24 * 60) / count / 60) : 0
     };
   });
+}
+
+export function getDeviceCount(config: AnalysisConfig): number {
+  return config.lineCount * config.classificationRules.length;
 }
 
 function round1(value: number): number {
@@ -226,7 +231,7 @@ function round1(value: number): number {
 
 
 
-export function buildDailySummary(records: FaultRecord[], month: string): DailySummary[] {
+export function buildDailySummary(records: FaultRecord[], month: string, deviceCount: number = 1): DailySummary[] {
   const days = daysInMonth(month);
   const result: DailySummary[] = [];
   for (let d = 1; d <= days; d++) {
@@ -238,7 +243,7 @@ export function buildDailySummary(records: FaultRecord[], month: string): DailyS
       day,
       count,
       downtime: round1(downtime),
-      faultRate: round1((downtime / (24 * 60)) * 100),
+      faultRate: round1((downtime / (24 * 60 * deviceCount)) * 100),
       mttr: count ? round1(downtime / count) : 0,
       mtbf: count ? round1(24 * 60 / count / 60) : 0
     });

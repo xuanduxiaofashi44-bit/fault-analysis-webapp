@@ -592,6 +592,7 @@ select:focus {
 }
 
 .table-tools select,
+#chartLineFilter,
 #chartMonth {
   width: 132px;
 }

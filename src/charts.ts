@@ -95,8 +95,8 @@ export function renderParetoInline(chart: echarts.ECharts, rows: TypeSummary[], 
   });
 }
 
-export function renderDailyTrendInline(chart: echarts.ECharts, result: AnalysisResult, month: string): void {
-  const daily = buildDailySummary(result.records, month);
+export function renderDailyTrendInline(chart: echarts.ECharts, result: AnalysisResult, month: string, deviceCount: number = 1): void {
+  const daily = buildDailySummary(result.records, month, deviceCount);
   chart.setOption({
     title: { text: `${month} 每日故障推移`, left: 8, textStyle: { fontSize: 14 } },
     color: ["#eb5757", "#2f80ed"],

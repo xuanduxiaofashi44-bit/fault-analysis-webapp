@@ -16,6 +16,7 @@ export type AnalysisConfig = {
   minDowntime: number;
   maxDowntime: number;
   departmentFilter: string;
+  lineCount: number;
   includeKeywords: KeywordRule[];
   excludeKeywords: KeywordRule[];
   highlightKeywords: string[];
@@ -77,4 +78,3 @@ export type AnalysisResult = {
   typeSummaryByMonth: Record<string, TypeSummary[]>;
   monthSummary: MonthSummary[];
 };
-

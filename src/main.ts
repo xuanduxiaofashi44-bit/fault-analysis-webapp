@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { analyzeWorkbook, splitList, buildTypeSummary, buildMonthSummary } from "./analysis";
+import { analyzeWorkbook, splitList, buildTypeSummary, buildMonthSummary, getDeviceCount } from "./analysis";
 import { renderCharts, resizeCharts, renderParetoInline, renderMttrInline, renderTrendInline, renderDailyTrendInline, ensureChart } from "./charts";
 import { defaultConfig, availableKeywordFields } from "./defaults";
 import { exportFullReport, type ExportOptions } from "./export";
@@ -96,11 +96,13 @@ function syncConfigToUI(): void {
   const deptInput = document.querySelector<HTMLInputElement>("#departmentInput");
   const minDowntimeInput = document.querySelector<HTMLInputElement>("#minDowntimeInput");
   const maxDowntimeInput = document.querySelector<HTMLInputElement>("#maxDowntimeInput");
+  const lineCountInput = document.querySelector<HTMLInputElement>("#lineCountInput");
   const highlightInput = document.querySelector<HTMLTextAreaElement>("#highlightInput");
   if (sheetsInput) sheetsInput.value = config.sheets.join(",");
   if (deptInput) deptInput.value = config.departmentFilter;
   if (minDowntimeInput) minDowntimeInput.value = String(config.minDowntime);
   if (maxDowntimeInput) maxDowntimeInput.value = config.maxDowntime ? String(config.maxDowntime) : "";
+  if (lineCountInput) lineCountInput.value = String(config.lineCount);
   if (highlightInput) highlightInput.value = config.highlightKeywords.join(",");
 }
 
@@ -202,7 +204,7 @@ function showEditModal(record?: FaultRecord): void {
 }
 
 // ======= init app =======
-app.innerHTML = `<header class="topbar"><div><h1>设备故障数据分析</h1><p>上传 Excel，配置筛选关键词，生成明细、柏拉图、MTTR/MTBF 和故障推移。</p></div><div class="topbar-right"><span id="loginArea"></span><button id="exportBtn" class="primary" disabled>导出 Excel</button></div></header><main class="layout"><aside class="sidebar"><nav class="side-nav" aria-label="功能导航"><div class="side-brand"><span>设</span><strong>故障分析</strong></div><button id="sidebarToggle" class="sidebar-toggle" aria-expanded="true" aria-label="收起规则">☰</button><button class="side-nav-item active" data-page="mainPage"><span class="nav-icon">主</span><span>首页</span></button><button class="side-nav-item" data-page="basicPanel"><span class="nav-icon">基</span><span>基础规则</span></button><button class="side-nav-item" data-page="keywordPanel"><span class="nav-icon">关</span><span>关键词</span></button><button class="side-nav-item" data-page="classPanel"><span class="nav-icon">分</span><span>分类规则</span></button></nav></aside><button id="sidebarOpenToggle" class="sidebar-open-toggle" aria-label="展开规则">☰</button><section class="workspace"><section id="mainPage" class="page-view active"><section class="panel upload-panel main-upload"><div><h2>文件上传</h2><div id="fileMeta" class="muted">尚未上传文件</div></div><label class="dropzone"><input id="fileInput" type="file" accept=".xlsx,.xls" /><span>选择 Excel 文件</span><small>支持 L1/L2/L3/L4 工作表</small></label></section><div id="warnings" class="warnings"></div><section class="metrics"><div><span id="totalRecords">0</span><small>筛选记录</small></div><div><span id="totalDowntime">0</span><small>停机分钟</small></div><div><span id="totalTypes">0</span><small>设备类型</small></div><div><span id="totalMonths">0</span><small>月份</small></div></section><section class="panel result-panel"><div class="result-head"><h2>图表分析</h2><select id="chartLineFilter" title="选择线体"><option value="全部">全部线体</option></select><select id="chartMonth"></select><button id="refreshChartsBtn" class="secondary" style="margin-left:8px;">刷新图表</button></div><div class="tabs"><button data-chart="pareto" class="active">停机柏拉图</button><button data-chart="mttr">MTTR/MTBF</button><button data-chart="trend">故障推移</button></div><div id="paretoChart" class="chart active"></div><div id="mttrChart" class="chart"></div><div id="trendChart" class="chart"></div></section><section class="panel result-panel"><div class="result-head"><h2>筛选明细</h2><div class="table-tools"><input id="tableSearch" placeholder="搜索问题、机器、责任人" /><select id="monthFilter"></select><select id="typeFilter"></select><select id="lineFilter"><option value="全部">全部线体</option></select><select id="sortSelect"><option value="downtime">按停机时长</option><option value="date">按日期</option><option value="machineType">按设备类型</option></select><select id="sortOrderSelect"><option value="desc">降序</option><option value="asc">升序</option></select></div></div><div class="data-toolbar" id="dataToolbar"><label class="check-label"><input type="checkbox" id="selectAllCheck" /> 全选</label><span id="selectionCount" class="muted"></span><button id="addRecordBtn" class="secondary">新增</button><button id="editRecordBtn" class="secondary" disabled>修改</button><button id="deleteRecordsBtn" class="secondary danger-btn" disabled>删除</button></div><div class="table-wrap"><table><thead><tr><th style="width:36px;"></th><th>日期</th><th>线体</th><th>时间</th><th>停机</th><th>设备类型</th><th>问题描述</th><th>责任</th></tr></thead><tbody id="recordRows"></tbody></table></div><div class="pagination" id="pagination"></div></section></section><section id="basicPanel" class="page-view panel config-workspace"><div class="result-head"><h2>基础规则</h2></div><div class="form-grid"><label>工作表<input id="sheetsInput" /></label><label>责任部门包含<input id="departmentInput" /></label><label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" /></label><label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" placeholder="不限制" /></label></div><div style="margin-top:14px;text-align:right;"><button id="saveBasicBtn" class="primary">保存并应用</button></div></section><section id="keywordPanel" class="page-view panel config-workspace"><div class="result-head"><h2>关键词</h2></div><label><span class="label-row">高亮关键词<span class="field-note">在故障内容中高亮以下关键词</span></span><textarea id="highlightInput"></textarea></label><div class="mini-title-row"><div class="mini-title">包含规则</div><button id="addIncludeBtn" class="icon-btn" title="新增包含规则">+</button></div><div id="includeRules"></div><div class="mini-title-row"><div class="mini-title">排除规则</div><button id="addExcludeBtn" class="icon-btn" title="新增排除规则">+</button></div><div id="excludeRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveKeywordBtn" class="primary">保存并应用</button></div></section><section id="classPanel" class="page-view panel config-workspace"><div class="result-head"><h2>分类规则</h2></div><div class="section-title"><span></span><button id="addClassBtn" class="icon-btn" title="新增分类">+</button></div><div class="class-header"><span>机器</span><span>关键词</span></div><div id="classRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveClassBtn" class="primary">保存并应用</button></div></section></section></main>`;
+app.innerHTML = `<header class="topbar"><div><h1>设备故障数据分析</h1><p>上传 Excel，配置筛选关键词，生成明细、柏拉图、MTTR/MTBF 和故障推移。</p></div><div class="topbar-right"><span id="loginArea"></span><button id="exportBtn" class="primary" disabled>导出 Excel</button></div></header><main class="layout"><aside class="sidebar"><nav class="side-nav" aria-label="功能导航"><div class="side-brand"><span>设</span><strong>故障分析</strong></div><button id="sidebarToggle" class="sidebar-toggle" aria-expanded="true" aria-label="收起规则">☰</button><button class="side-nav-item active" data-page="mainPage"><span class="nav-icon">主</span><span>首页</span></button><button class="side-nav-item" data-page="basicPanel"><span class="nav-icon">基</span><span>基础规则</span></button><button class="side-nav-item" data-page="keywordPanel"><span class="nav-icon">关</span><span>关键词</span></button><button class="side-nav-item" data-page="classPanel"><span class="nav-icon">分</span><span>分类规则</span></button></nav></aside><button id="sidebarOpenToggle" class="sidebar-open-toggle" aria-label="展开规则">☰</button><section class="workspace"><section id="mainPage" class="page-view active"><section class="panel upload-panel main-upload"><div><h2>文件上传</h2><div id="fileMeta" class="muted">尚未上传文件</div></div><label class="dropzone"><input id="fileInput" type="file" accept=".xlsx,.xls" /><span>选择 Excel 文件</span><small>支持 L1/L2/L3/L4 工作表</small></label></section><div id="warnings" class="warnings"></div><section class="metrics"><div><span id="totalRecords">0</span><small>筛选记录</small></div><div><span id="totalDowntime">0</span><small>停机分钟</small></div><div><span id="totalTypes">0</span><small>设备类型</small></div><div><span id="totalMonths">0</span><small>月份</small></div></section><section class="panel result-panel"><div class="result-head"><h2>图表分析</h2><select id="chartLineFilter" title="选择线体"><option value="全部">全部线体</option></select><select id="chartMonth"></select><button id="refreshChartsBtn" class="secondary" style="margin-left:8px;">刷新图表</button></div><div class="tabs"><button data-chart="pareto" class="active">停机柏拉图</button><button data-chart="mttr">MTTR/MTBF</button><button data-chart="trend">故障推移</button></div><div id="paretoChart" class="chart active"></div><div id="mttrChart" class="chart"></div><div id="trendChart" class="chart"></div></section><section class="panel result-panel"><div class="result-head"><h2>筛选明细</h2><div class="table-tools"><input id="tableSearch" placeholder="搜索问题、机器、责任人" /><select id="monthFilter"></select><select id="typeFilter"></select><select id="lineFilter"><option value="全部">全部线体</option></select><select id="sortSelect"><option value="downtime">按停机时长</option><option value="date">按日期</option><option value="machineType">按设备类型</option></select><select id="sortOrderSelect"><option value="desc">降序</option><option value="asc">升序</option></select></div></div><div class="data-toolbar" id="dataToolbar"><label class="check-label"><input type="checkbox" id="selectAllCheck" /> 全选</label><span id="selectionCount" class="muted"></span><button id="addRecordBtn" class="secondary">新增</button><button id="editRecordBtn" class="secondary" disabled>修改</button><button id="deleteRecordsBtn" class="secondary danger-btn" disabled>删除</button></div><div class="table-wrap"><table><thead><tr><th style="width:36px;"></th><th>日期</th><th>线体</th><th>时间</th><th>停机</th><th>设备类型</th><th>问题描述</th><th>责任</th></tr></thead><tbody id="recordRows"></tbody></table></div><div class="pagination" id="pagination"></div></section></section><section id="basicPanel" class="page-view panel config-workspace"><div class="result-head"><h2>基础规则</h2></div><div class="form-grid"><label>工作表<input id="sheetsInput" /></label><label>责任部门包含<input id="departmentInput" /></label><label>最小停机时长(min)<input id="minDowntimeInput" type="number" min="0" step="1" /></label><label>最大停机时长(min)<input id="maxDowntimeInput" type="number" min="0" step="1" placeholder="不限制" /></label><label>线体数量<input id="lineCountInput" type="number" min="1" step="1" /></label></div><div style="margin-top:14px;text-align:right;"><button id="saveBasicBtn" class="primary">保存并应用</button></div></section><section id="keywordPanel" class="page-view panel config-workspace"><div class="result-head"><h2>关键词</h2></div><label><span class="label-row">高亮关键词<span class="field-note">在故障内容中高亮以下关键词</span></span><textarea id="highlightInput"></textarea></label><div class="mini-title-row"><div class="mini-title">包含规则</div><button id="addIncludeBtn" class="icon-btn" title="新增包含规则">+</button></div><div id="includeRules"></div><div class="mini-title-row"><div class="mini-title">排除规则</div><button id="addExcludeBtn" class="icon-btn" title="新增排除规则">+</button></div><div id="excludeRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveKeywordBtn" class="primary">保存并应用</button></div></section><section id="classPanel" class="page-view panel config-workspace"><div class="result-head"><h2>分类规则</h2></div><div class="section-title"><span></span><button id="addClassBtn" class="icon-btn" title="新增分类">+</button></div><div class="class-header"><span>机器</span><span>关键词</span></div><div id="classRules"></div><div style="margin-top:14px;text-align:right;"><button id="saveClassBtn" class="primary">保存并应用</button></div></section></section></main>`;
 
 bindEvents();
 renderRuleEditors();
@@ -235,9 +237,10 @@ function bindEvents(): void {
   bindInputNoRun("#departmentInput", (value) => { config.departmentFilter = value.trim(); });
   bindInputNoRun("#minDowntimeInput", (value) => { config.minDowntime = Number(value) || 0; });
   bindInputNoRun("#maxDowntimeInput", (value) => { config.maxDowntime = Number(value) || 0; });
+  bindInputNoRun("#lineCountInput", (value) => { config.lineCount = Math.max(1, Number(value) || 4); });
   bindInputNoRun("#highlightInput", (value) => { config.highlightKeywords = splitList(value); });
 
-  document.querySelector("#saveBasicBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); showToast("✓ 保存成功"); });
+  document.querySelector("#saveBasicBtn")?.addEventListener("click", () => { saveConfig(); recalcSummaries(); renderResult(); showToast("✓ 保存成功"); });
   document.querySelector("#saveKeywordBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); showToast("✓ 保存成功"); });
   document.querySelector("#saveClassBtn")?.addEventListener("click", () => { saveConfig(); runAnalysis(); showToast("✓ 保存成功"); });
 
@@ -278,10 +281,12 @@ function bindEvents(): void {
   // 行 checkbox 事件委托 —— 只绑定一次
   const tableBody = document.querySelector<HTMLTableSectionElement>("#recordRows");
   tableBody?.addEventListener("change", (event) => {
-    const target = event.target as HTMLInputElement;
-    if (target.classList.contains("row-check")) {
-      const id = target.dataset.id ?? "";
-      if (target.checked) selectedIds.add(id); else selectedIds.delete(id);
+    const target = event.target as HTMLElement;
+    if (target.classList.contains("inline-type-select")) {
+      if (result) { const rec = result.records.find(r => r.id === (target as HTMLElement).dataset.id); if (rec) { rec.machineType = (target as HTMLSelectElement).value; _invalidateFilterCache(); renderTable(); } }
+    } else if (target.classList.contains("row-check")) {
+      const id = (target as HTMLInputElement).dataset.id ?? "";
+      if ((target as HTMLInputElement).checked) { if (id) selectedIds.add(id); } else { if (id) selectedIds.delete(id); }
       renderTable();
     }
   });
@@ -353,7 +358,7 @@ function getLineScopedResult(): AnalysisResult | null {
     months,
     typeSummary: buildTypeSummary(records),
     typeSummaryByMonth: Object.fromEntries(months.map((month) => [month, buildTypeSummary(records.filter((record) => record.date.startsWith(month)), month)])),
-    monthSummary: buildMonthSummary(records, months)
+    monthSummary: buildMonthSummary(records, months, getDeviceCount(config))
   };
 }
 
@@ -401,7 +406,7 @@ function recalcSummaries(): void {
   r.months = months;
   r.typeSummary = buildTypeSummary(r.records);
   r.typeSummaryByMonth = Object.fromEntries(months.map((m) => [m, buildTypeSummary(r.records.filter((rec) => rec.date.startsWith(m)), m)]));
-  r.monthSummary = buildMonthSummary(r.records, months);
+  r.monthSummary = buildMonthSummary(r.records, months, getDeviceCount(config));
 
 }
 
@@ -489,14 +494,16 @@ function renderTable(): void {
   const frag = document.createDocumentFragment();
   const tbodyNew = document.createElement("tbody");
   tbodyNew.id = "recordRows";
-  tbodyNew.innerHTML = pageRows.length ? pageRows.map(r => `<tr class="${r.highlighted ? "highlight" : ""}"><td><input type="checkbox" class="row-check" data-id="${r.id}" ${selectedIds.has(r.id) ? "checked" : ""} /></td><td>${escapeHtml(r.date)}</td><td>${escapeHtml(r.line)}</td><td>${escapeHtml(r.startTime)}-${escapeHtml(r.endTime)}</td><td><span class="${downtimeClass(r.downtime)}">${r.downtime}</span></td><td>${escapeHtml(r.machineType)}</td><td>${escapeHtml(r.description)}</td><td>${escapeHtml(r.department)} / ${escapeHtml(r.owner)}</td></tr>`).join("") : `<tr><td colspan="8" class="empty">暂无符合条件的数据</td></tr>`;
+  tbodyNew.innerHTML = pageRows.length ? pageRows.map(r => `<tr class="${r.highlighted ? "highlight" : ""}"><td><input type="checkbox" class="row-check" data-id="${r.id}" ${selectedIds.has(r.id) ? "checked" : ""} /></td><td>${escapeHtml(r.date)}</td><td>${escapeHtml(r.line)}</td><td>${escapeHtml(r.startTime)}-${escapeHtml(r.endTime)}</td><td><span class="${downtimeClass(r.downtime)}">${r.downtime}</span></td><td>${r.machineType === "未分类" ? `<select class="inline-type-select" data-id="${r.id}"><option selected>未分类</option>${config.classificationRules.map(cr => `<option>${escapeHtml(cr.type)}</option>`).join("")}</select>` : escapeHtml(r.machineType)}</td><td>${escapeHtml(r.description)}</td><td>${escapeHtml(r.department)} / ${escapeHtml(r.owner)}</td></tr>`).join("") : `<tr><td colspan="8" class="empty">暂无符合条件的数据</td></tr>`;
   tbody.replaceWith(tbodyNew);
   // 重新绑定事件委托
   tbodyNew.addEventListener("change", (event) => {
-    const target = event.target as HTMLInputElement;
-    if (target.classList.contains("row-check")) {
-      const id = target.dataset.id ?? "";
-      if (target.checked) selectedIds.add(id); else selectedIds.delete(id);
+    const target = event.target as HTMLElement;
+    if (target.classList.contains("inline-type-select")) {
+      if (result) { const rec = result.records.find(r => r.id === (target as HTMLElement).dataset.id); if (rec) { rec.machineType = (target as HTMLSelectElement).value; _invalidateFilterCache(); renderTable(); } }
+    } else if (target.classList.contains("row-check")) {
+      const id = (target as HTMLInputElement).dataset.id ?? "";
+      if ((target as HTMLInputElement).checked) { if (id) selectedIds.add(id); } else { if (id) selectedIds.delete(id); }
       renderTable();
     }
   });
@@ -598,7 +605,7 @@ function renderActiveChartOnly(): void {
     const t = ensureChart("trend");
     if (t) {
       if (selectedMonth === "合计") renderTrendInline(t, chartResult);
-      else renderDailyTrendInline(t, chartResult, selectedMonth);
+      else renderDailyTrendInline(t, chartResult, selectedMonth, getDeviceCount(config));
     }
   }
 }

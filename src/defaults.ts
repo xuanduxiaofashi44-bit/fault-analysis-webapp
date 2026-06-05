@@ -5,6 +5,7 @@ export const defaultConfig: AnalysisConfig = {
   minDowntime: 10,
   maxDowntime: 0,
   departmentFilter: "设备",
+  lineCount: 4,
   includeKeywords: [],
   excludeKeywords: [
     {

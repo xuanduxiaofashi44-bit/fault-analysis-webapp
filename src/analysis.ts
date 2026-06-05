@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+﻿import * as XLSX from "xlsx";
 import type { AnalysisConfig, AnalysisResult, DailySummary, FaultRecord, KeywordRule, MonthSummary, TypeSummary } from "./types";
 
 const fieldGetters: Record<string, (record: FaultRecord) => string> = {
@@ -207,6 +207,37 @@ export function buildTypeSummary(records: FaultRecord[], month?: string): TypeSu
     });
 }
 
+
+/** 分线体类型汇总 —— 线体+设备 合并为唯一类型名，如 L1化成 */
+export function buildLineTypeSummary(records: FaultRecord[], month?: string): TypeSummary[] {
+  const totalDowntime = records.reduce((sum, record) => sum + record.downtime, 0);
+  const days = month ? daysInMonth(month) : Math.max(1, [...new Set(records.map((record) => record.date))].length || 1);
+  const grouped = new Map<string, { count: number; downtime: number }>();
+  for (const record of records) {
+    const key = `${record.line ?? "?"}${record.machineType}`;
+    const current = grouped.get(key) ?? { count: 0, downtime: 0 };
+    current.count += 1;
+    current.downtime += record.downtime;
+    grouped.set(key, current);
+  }
+  let cumulative = 0;
+  return [...grouped.entries()]
+    .map(([type, value]) => ({ type, ...value }))
+    .sort((a, b) => b.downtime - a.downtime)
+    .map((item) => {
+      const share = totalDowntime ? item.downtime / totalDowntime : 0;
+      cumulative += share;
+      return {
+        type: item.type,
+        count: item.count,
+        downtime: round1(item.downtime),
+        share,
+        cumulativeShare: cumulative,
+        mttr: item.count ? round1(item.downtime / item.count) : 0,
+        mtbf: item.count ? round1((days * 24 * 60) / item.count / 60) : 0
+      };
+    });
+}
 export function buildMonthSummary(records: FaultRecord[], months: string[], deviceCount: number = 1): MonthSummary[] {
   return months.map((month) => {
     const monthRecords = records.filter((record) => record.date.startsWith(month));
